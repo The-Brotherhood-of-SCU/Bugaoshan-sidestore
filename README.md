@@ -23,13 +23,15 @@ GitHub 链接前拼接 `https://gh-proxy.com/`。镜像源里的 `sourceURL`、`
 
 GitHub Pages 落地页（含一键添加按钮）：<https://wjj-8283.github.io/Bugaoshan-sidestore/>
 
-点一下就直接添加（iOS 上打开链接会唤起对应 App）：
+点一下就直接添加（iOS 上打开链接会唤起对应 App；AltStore 把 `sidestore://` 换成 `altstore://` 即可）：
 
-- SideStore：`sidestore://source?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fpreview.json`
-- AltStore：`altstore://source?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fstable.json`
+- 预览版（直连）：`sidestore://source?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fpreview.json`
+- 预览版（国内镜像）：`sidestore://source?url=https%3A%2F%2Fgh-proxy.com%2Fhttps%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fpreview-mirror.json`
+- 正式版（直连）：`sidestore://source?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fstable.json`
+- 正式版（国内镜像）：`sidestore://source?url=https%3A%2F%2Fgh-proxy.com%2Fhttps%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fstable-mirror.json`
 
-> 两个源共用同一个 Bundle ID（`io.github.thebrotherhoodofscu.bugaoshan.ios`），
-> 同一台设备同一时间只能安装其中一个渠道的版本。
+> 两个渠道共用同一个 Bundle ID（`io.github.thebrotherhoodofscu.bugaoshan.ios`），
+> 同一台设备同一时间只能安装其中一个渠道的版本；每个渠道的直连源与镜像源内容相同，加一个即可。
 
 ## 工作原理
 
