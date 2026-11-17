@@ -129,29 +129,38 @@ assets/                      # 图标与截图（来自上游）
 .github/workflows/pages.yml         # Pages 部署
 ```
 
-## 小组件（CourseWidget）为什么用不了
+## 小组件（CourseWidget）与 Keychain 桥接补丁
 
-上游的课表小组件通过 App Group `group.io.github.thebrotherhoodofscu.bugaoshan.ios` 和 App 共享
-数据库与偏好设置（`flutter_app_group_directory` + `UserDefaults(suiteName:)`）。App Group 属于
-**需要付费 Apple Developer Program** 才能签发的能力（免费 Personal Team 没有这个 capability，
-SideStore 走 Apple 官方开发者接口创建 App Group 会失败），所以：
+上游小组件通过 App Group `group.io.github.thebrotherhoodofscu.bugaoshan.ios` 与 App 共享 SQLite
+数据库和设置。侧载环境拿不到这个 App Group：标识全局唯一、归上游开发者 Team 所有，SideStore 重签时
+会追加你的 TeamID（`...ios.<TEAMID>`），而 App / Widget 代码里写死原标识，所以**原版 IPA 的小组件
+一定空白**（App Group 也是付费开发者 capability，免费账号更没有）。
 
-- **免费 Apple ID 侧载**：SideStore 无法为 App Group 下发描述文件。本源的未签名 IPA 也刻意
-  **不携带** App Group entitlement——如果带上，SideStore 会尝试创建 App Group 并在签名阶段报错，
-  连 App 都装不上。结果是 App 退回自己的沙盒目录存数据库，小组件读不到共享容器，显示空白/占位。
-- **安装时 SideStore 询问是否移除扩展**：移除可以少占一个 App ID（免费账号只有 3 个），但小组件
-  彻底没有；保留则多一个空白小组件。
-- **有付费开发者账号也不行（SideStore/AltStore 重签场景）**：App Group 标识是全局唯一的，
-  `group.io.github.thebrotherhoodofscu.bugaoshan.ios` 归上游开发者的 Team 所有，别人无法复用。
-  SideStore 在 `adjustedGroupIdentifier` 里会给它追加你自己的 TeamID
-  （变成 `group.io.github.thebrotherhoodofscu.bugaoshan.ios.<TEAMID>`），而 App 与小组件代码里
-  写死的是原标识，双方对不上，共享容器依然读不到。
-- **想真正用上小组件**：用 [App Store 版本](https://apps.apple.com/cn/app/id6813305962)；
-  或者自己从上游源码构建，把 `lib/services/database_service.dart`、`ios/Runner/AppDelegate.swift`、
-  `ios/Runner/ReminderChannel.swift`、`ios/CourseWidget/WidgetExtension.swift` 里的 group 标识
-  改成你自己 Team 拥有的 App Group，再用 Xcode 真机安装。
+本仓库的构建内置了桥接补丁 `patches/widget-bridge.patch`，换掉这条数据通路：
 
-这是侧载签名的固有限制，不是本仓库的构建问题。
+- **App 侧**：在 `updateWidget`（进入首页、改课表、改小组件设置时都会调）以及 App 进入后台时，
+  把 `bugaoshan.db` 整库快照写进 **Keychain**（默认 access group，不需要 App Group capability）；
+  小组件的显示明天 / 配色 / 密度设置也写入 Keychain；
+- **Widget 侧**：先尝试 App Group（正常签名场景）；拿不到时从 Keychain 读快照，落到扩展自己的
+  缓存目录，再走**原有 SQLite 查询与 UI**，所以渲染逻辑不变；
+- **真机验证**：SideStore + 免费 Apple ID、安装时选 *Keep App Extensions (Use Main Profile)*，
+  小组件可正常显示课程。
+
+安装要求：
+
+1. 出现 *App Contains Extensions* 时选 **Keep App Extensions (Use Main Profile)**——这样 App 与扩展
+   共享同一个 `application-identifier`，Keychain 默认 group 才一致；
+2. 装完先打开一次 App（停留在首页）写入快照，再添加小组件；从旧版升级的话，把旧小组件删掉重新添加；
+3. 若安装时移除扩展，或选择 *Register App ID for Each Extension*，小组件不可用；实时活动也需要保留扩展。
+
+已知限制：
+
+- 桥接后的 `version` 与 IPA 的 `CFBundleShortVersionString` 仍然一致；同一版本号重新构建不会触发
+  SideStore 的更新提示，要拿到带补丁的构建需要手动重装一次，之后上游发新版本会自动带上；
+- 补丁依赖上游 `ios/Runner/AppDelegate.swift` 与 `ios/CourseWidget/WidgetExtension.swift` 的结构；
+  上游改动导致失配时 CI 会先尝试 fuzz，仍失败则回退为「无桥接」构建并在 Release 说明里标注，不会阻断同步；
+- 快照只写入本机 Keychain（`kSecAttrAccessibleAfterFirstUnlock`），不上传；
+- App Store 版本不受影响，仍使用官方 App Group。
 
 ## 注意事项
 
@@ -184,3 +193,4 @@ CI 发布前会执行 `scripts/validate_sources.py --check-urls --check-hashes`�
 | 镜像源结构 / URL 前缀 / 版本与直连一致 | 通过（CI 每次发布都会校验） |
 | 镜像站实际可达、IPA 经代理下载后 SHA-256 一致 | 通过（gh-proxy.com，实测字节一致） |
 | GitHub Pages 落地页 | 通过（`/preview.json`、`/stable.json` 及镜像源均可用） |
+| 小组件 Keychain 桥接（真机） | 通过（SideStore + 免费 ID，Use Main Profile 安装） |

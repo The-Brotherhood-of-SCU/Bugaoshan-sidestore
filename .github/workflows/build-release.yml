@@ -86,6 +86,31 @@ jobs:
           git clone --depth 1 --branch "$SRC_TAG" "https://github.com/$UPSTREAM_REPO.git" "$UPSTREAM_DIR"
           echo "UPSTREAM_COMMIT=$(git -C "$UPSTREAM_DIR" rev-parse HEAD)" >> "$GITHUB_ENV"
 
+      - name: Apply widget bridge patch
+        if: fromJSON(inputs.plan).mode == 'build'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$GITHUB_WORKSPACE/patches/widget-bridge.patch"
+          cd "$UPSTREAM_DIR"
+          # 小组件桥接补丁：App 把 DB 快照写进 Keychain，Widget 扩展从 Keychain 还原，
+          # 用于无法使用 App Group 的侧载环境。上游改动这两个文件时补丁可能失配，
+          # 先尝试 fuzz，仍失败则回滚并降级为「无桥接」构建，绝不阻断同步。
+          if git apply --verbose "$PATCH" 2>/dev/null; then
+            echo "WIDGET_BRIDGE=applied" >> "$GITHUB_ENV"
+            echo "widget bridge patch：git apply 成功"
+          else
+            git checkout -- . && git clean -fd
+            if patch -p1 -F3 --dry-run < "$PATCH" >/dev/null 2>&1 && patch -p1 -F3 < "$PATCH" >/dev/null 2>&1; then
+              echo "WIDGET_BRIDGE=applied-fuzzy" >> "$GITHUB_ENV"
+              echo "widget bridge patch：fuzz 应用成功（上游有轻微改动）"
+            else
+              git checkout -- . && git clean -fd
+              echo "WIDGET_BRIDGE=missing" >> "$GITHUB_ENV"
+              echo "::warning::widget bridge 补丁失配，本次构建不含小组件桥接；请更新 patches/widget-bridge.patch"
+            fi
+          fi
+
       - name: Set up Flutter
         if: fromJSON(inputs.plan).mode == 'build'
         uses: subosito/flutter-action@v2
@@ -167,6 +192,11 @@ jobs:
             echo
             echo "- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。"
             echo "- 版本注入：\`CFBundleShortVersionString=$SRC_BUILD_NAME\`、\`CFBundleVersion=$SRC_BUILD_NUMBER\`（与上游 CI 的版本注入规则一致）。"
+            if [ "${WIDGET_BRIDGE:-}" = "applied" ] || [ "${WIDGET_BRIDGE:-}" = "applied-fuzzy" ]; then
+              echo "- 小组件：已内置 Keychain 桥接补丁。安装时请选 **Keep App Extensions (Use Main Profile)**，装完先打开一次 App 让快照写入，再添加小组件。"
+            else
+              echo "- 小组件：本次构建未包含桥接补丁（上游结构变化导致失配），侧载环境小组件不可用。"
+            fi
             echo
           } > "$NOTES"
           if ! gh api "repos/$UPSTREAM_REPO/releases/tags/$SRC_TAG" --jq '.body' >> "$NOTES" 2>/dev/null; then
@@ -279,6 +309,7 @@ jobs:
             echo "| 动作 | \`$SRC_MODE\` |"
             echo "| 上游 tag | \`$SRC_TAG\` |"
             echo "| 版本注入 | \`$SRC_BUILD_NAME ($SRC_BUILD_NUMBER)\` |"
+            echo "| 小组件桥接 | \`${WIDGET_BRIDGE:-unknown}\` |"
             echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$SRC_TAG |"
             if [ -f "$IPA_DIR/metadata.json" ]; then
               echo "| IPA 大小 | $(cat "$IPA_DIR/metadata.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["size"])') 字节 |"
