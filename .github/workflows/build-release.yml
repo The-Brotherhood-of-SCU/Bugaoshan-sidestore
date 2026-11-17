@@ -142,6 +142,7 @@ jobs:
             --app "$UPSTREAM_DIR/build/ios/iphoneos/Runner.app" \
             --out "$IPA_DIR/Bugaoshan-$SRC_VERSION.ipa" \
             --expect-bundle-id io.github.thebrotherhoodofscu.bugaoshan.ios \
+            --set-short-version "$SRC_BUILD_NAME" \
             --expect-short-version "$SRC_BUILD_NAME" \
             --expect-build-number "$SRC_BUILD_NUMBER" \
             | tee "$IPA_DIR/metadata.json"

@@ -54,8 +54,11 @@ schedule(每 30 分钟) / manual dispatch
 - **版本注入（与上游有意不同）**：SideStore 默认开启「App 版本校验」，安装时要求
   IPA 的 `CFBundleShortVersionString` 与源 JSON 的 `version` **完全一致**，否则会以
   `mismatchedVersion` 失败；同时不同 RC 的版本号必须能排出先后，客户端才知道有新预览版。
-  因此预览渠道直接注入 tag 的版本号（如 `2.6.0-rc3`、`2.5.4-preview.48`），稳定渠道注入
+  因此预览渠道的版本号就是 tag 的真实版本（如 `2.6.0-rc3`、`2.5.4-preview.48`），稳定渠道是
   `X.Y.Z`；两者的 `CFBundleVersion` 都按上游公式 `major*10000 + minor*100 + patch` 计算。
+  另外 Flutter 在 iOS 上会把 `--build-name` 过滤成纯数字（`2.6.0-rc3` → `2.6.03`），
+  所以 CI 在构建后用 `package_ipa.py --set-short-version` 回写主 App 与扩展的
+  `Info.plist`，保证与源 JSON 完全一致。
 - **完整性**：源 JSON 的每个版本都带 IPA 的 `sha256`，SideStore 默认会校验下载内容；
   CI 在提交前会实际下载已发布的 IPA 复核大小与哈希。
 - **构建环境**：Flutter `3.44.9`、`PUB_HOSTED_URL=https://pub.flutter-io.cn`、

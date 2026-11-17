@@ -37,6 +37,35 @@ def load_app_info(app_dir: Path) -> dict[str, Any]:
     return plistlib.loads(plist_path.read_bytes())
 
 
+def patch_short_version(app_dir: Path, version: str) -> list[str]:
+    """回写 CFBundleShortVersionString（主 App、扩展、Frameworks）。
+
+    Flutter 在 iOS 上会把 ``--build-name`` 过滤成纯数字/点（见 flutter_tools
+    ``validatedBuildNameForPlatform``），``2.6.0-rc3`` 会变成 ``2.6.03``；而
+    SideStore 默认校验源 JSON 的 ``version`` 必须与 Info.plist 完全一致，
+    因此构建后在这里回填带预发布后缀的版本号。
+    """
+    patched: list[str] = []
+    plists = [app_dir / "Info.plist"]
+    plists += sorted(app_dir.glob("PlugIns/*.appex/Info.plist"))
+    plists += sorted(app_dir.glob("Frameworks/*.framework/Info.plist"))
+    for plist_path in plists:
+        if not plist_path.is_file():
+            continue
+        try:
+            data = plistlib.loads(plist_path.read_bytes())
+        except Exception as error:  # noqa: BLE001 - 损坏的 plist 应显式失败
+            raise SystemExit(f"无法解析 {plist_path}：{error}") from error
+        if "CFBundleShortVersionString" not in data:
+            continue
+        if str(data["CFBundleShortVersionString"]) == version:
+            continue
+        data["CFBundleShortVersionString"] = version
+        plist_path.write_bytes(plistlib.dumps(data, fmt=plistlib.FMT_BINARY))
+        patched.append(str(plist_path.relative_to(app_dir)))
+    return patched
+
+
 def check_app(
     app_dir: Path,
     info: dict[str, Any],
@@ -124,10 +153,18 @@ def build_ipa(
     expect_bundle_id: str | None = None,
     expect_short_version: str | None = None,
     expect_build_number: str | None = None,
+    set_short_version: str | None = None,
 ) -> dict[str, Any]:
     app_dir = app_dir.resolve()
     if app_dir.suffix != ".app" or not app_dir.is_dir():
         raise SystemExit(f"不是 .app 目录：{app_dir}")
+    if set_short_version:
+        patched = patch_short_version(app_dir, set_short_version)
+        if patched:
+            print(
+                f"已回写 CFBundleShortVersionString={set_short_version}：{', '.join(patched)}",
+                file=sys.stderr,
+            )
     info = load_app_info(app_dir)
     check_app(
         app_dir,
@@ -161,6 +198,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expect-bundle-id", default=None)
     parser.add_argument("--expect-short-version", default=None)
     parser.add_argument("--expect-build-number", default=None)
+    parser.add_argument(
+        "--set-short-version",
+        default=None,
+        help="打包前回写 CFBundleShortVersionString（用于带 -rc/-preview 后缀的版本）",
+    )
     args = parser.parse_args(argv)
 
     metadata = build_ipa(
@@ -169,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
         expect_bundle_id=args.expect_bundle_id,
         expect_short_version=args.expect_short_version,
         expect_build_number=args.expect_build_number,
+        set_short_version=args.set_short_version,
     )
     print(json.dumps(metadata, ensure_ascii=False))
     return 0

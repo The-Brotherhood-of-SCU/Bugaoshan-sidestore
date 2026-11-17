@@ -369,6 +369,39 @@ class PackageIpaTests(unittest.TestCase):
                 )
                 self.assertEqual(archive.read(link), b"App")
 
+    def test_set_short_version_patches_app_and_extensions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = self._make_app(root, short_version="2.6.03", build_number="20600")
+            appex = app / "PlugIns" / "CourseWidgetExtension.appex"
+            appex.mkdir(parents=True)
+            (appex / "Info.plist").write_bytes(
+                plistlib.dumps(
+                    {
+                        "CFBundleShortVersionString": "2.6.03",
+                        "CFBundleExecutable": "CourseWidgetExtension",
+                    }
+                )
+            )
+            out = root / "preview.ipa"
+            metadata = package_ipa.build_ipa(
+                app,
+                out,
+                set_short_version="2.6.0-rc3",
+                expect_short_version="2.6.0-rc3",
+                expect_build_number="20600",
+            )
+            self.assertEqual(metadata["short_version"], "2.6.0-rc3")
+            with zipfile.ZipFile(out) as archive:
+                main = plistlib.loads(archive.read("Payload/Runner.app/Info.plist"))
+                self.assertEqual(main["CFBundleShortVersionString"], "2.6.0-rc3")
+                extension = plistlib.loads(
+                    archive.read(
+                        "Payload/Runner.app/PlugIns/CourseWidgetExtension.appex/Info.plist"
+                    )
+                )
+                self.assertEqual(extension["CFBundleShortVersionString"], "2.6.0-rc3")
+
     def test_version_mismatch_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
