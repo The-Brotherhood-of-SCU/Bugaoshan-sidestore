@@ -283,6 +283,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--check-hashes", action="store_true", help="下载最新 IPA 并校验 JSON 中的 sha256"
     )
+    parser.add_argument(
+        "--channel",
+        default="all",
+        choices=["all", "preview", "stable"],
+        help="只校验指定渠道；构建流水线里传当前渠道，避免并行重建时误判另一个渠道",
+    )
     parser.add_argument("--repo", default=common.env("GITHUB_REPOSITORY"))
     parser.add_argument(
         "--strict-mirror",
@@ -294,7 +300,8 @@ def main(argv: list[str] | None = None) -> int:
     config = common.load_config()
     failed = False
 
-    for channel in ("preview", "stable"):
+    channels = ("preview", "stable") if args.channel == "all" else (args.channel,)
+    for channel in channels:
         direct_path = common.source_path(channel)
         mirror_path = common.mirror_source_path(channel)
         try:

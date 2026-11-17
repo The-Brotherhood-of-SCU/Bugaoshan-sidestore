@@ -272,7 +272,7 @@ jobs:
       - name: Validate source JSON
         shell: bash
         # 镜像站（第三方代理）抖动只告警、不阻断发布；直连地址与哈希必须通过。
-        run: python3 scripts/validate_sources.py --check-urls --check-hashes
+        run: python3 scripts/validate_sources.py --channel "$SRC_CHANNEL" --check-urls --check-hashes
 
       - name: Commit source JSON
         shell: bash
