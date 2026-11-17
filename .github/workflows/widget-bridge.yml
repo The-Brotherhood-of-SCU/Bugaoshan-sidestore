@@ -1,0 +1,164 @@
+name: Widget bridge prototype
+
+# 实验性工作流：给「侧载无法使用 App Group」的场景做的 Widget 数据通道原型。
+# App 把 SQLite 快照写进 Keychain，Widget 扩展从 Keychain 还原快照后照旧用 SQLite 查询。
+# 产物是独立 Release 资产（widgetbridge-<tag>），不进 preview.json / stable.json。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "上游 tag（默认 v2.6.0-rc3；补丁上下文需匹配）"
+        type: string
+        default: "v2.6.0-rc3"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: widget-bridge
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      UPSTREAM_REPO: The-Brotherhood-of-SCU/Bugaoshan
+      UPSTREAM_DIR: ${{ github.workspace }}/.work/upstream
+      IPA_DIR: ${{ github.workspace }}/.work/ipa
+      PUB_HOSTED_URL: https://pub.flutter-io.cn
+      COCOAPODS_DISABLE_STATS: "true"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          chosen=""
+          for candidate in \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.app \
+            /Applications/Xcode_26.0.app; do
+            if [ -d "$candidate/Contents/Developer" ]; then
+              chosen="$candidate"
+              break
+            fi
+          done
+          if [ -z "$chosen" ]; then
+            chosen="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          fi
+          echo "使用 $chosen"
+          sudo xcode-select --switch "$chosen/Contents/Developer"
+          xcodebuild -version
+
+      - name: Clone upstream at tag
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: |
+          set -euo pipefail
+          rm -rf "$UPSTREAM_DIR"
+          mkdir -p "$(dirname "$UPSTREAM_DIR")"
+          git clone --depth 1 --branch "${{ inputs.tag }}" \
+            "https://github.com/$UPSTREAM_REPO.git" "$UPSTREAM_DIR"
+          echo "UPSTREAM_COMMIT=$(git -C "$UPSTREAM_DIR" rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Apply widget bridge patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C "$UPSTREAM_DIR" apply --verbose "$GITHUB_WORKSPACE/patches/widget-bridge.patch"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.9"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        shell: bash
+        working-directory: ${{ github.workspace }}/.work/upstream
+        run: python3 .github/scripts/pub_get_with_fallback.py
+
+      - name: Generate code and localizations
+        shell: bash
+        working-directory: ${{ github.workspace }}/.work/upstream
+        run: |
+          set -uo pipefail
+          dart run build_runner build --delete-conflicting-outputs || true
+          flutter gen-l10n
+
+      - name: Build unsigned iOS app
+        shell: bash
+        working-directory: ${{ github.workspace }}/.work/upstream
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+          BASE="${VERSION%%-*}"
+          IFS='.' read -r MAJ MIN PAT <<< "$BASE"
+          BUILD_NUMBER=$((10#$MAJ * 10000 + 10#$MIN * 100 + 10#$PAT))
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          flutter build ios --release --no-codesign \
+            --build-name "$VERSION" \
+            --build-number "$BUILD_NUMBER"
+
+      - name: Package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$IPA_DIR"
+          python3 scripts/package_ipa.py \
+            --app "$UPSTREAM_DIR/build/ios/iphoneos/Runner.app" \
+            --out "$IPA_DIR/Bugaoshan-$VERSION-widgetbridge.ipa" \
+            --expect-bundle-id io.github.thebrotherhoodofscu.bugaoshan.ios \
+            --set-short-version "$VERSION" \
+            --expect-short-version "$VERSION" \
+            --expect-build-number "$BUILD_NUMBER" \
+            | tee "$IPA_DIR/metadata.json"
+          ls -lh "$IPA_DIR"
+
+      - name: Publish prototype release
+        shell: bash
+        run: |
+          set -euo pipefail
+          NOTES="$RUNNER_TEMP/widget-bridge-notes.md"
+          {
+            echo "**实验性构建：Widget Keychain 桥接原型**（不在 preview.json / stable.json 中）"
+            echo
+            echo "上游 tag：\`${{ inputs.tag }}\`（commit \`$UPSTREAM_COMMIT\`）"
+            echo
+            echo "改动："
+            echo "- App 在 \`updateWidget\` / 进入后台时，把 \`bugaoshan.db\` 快照写入 Keychain（默认 access group）"
+            echo "- Widget 扩展读不到 App Group 时，从 Keychain 还原快照到自己的缓存目录，再走原有 SQLite 查询"
+            echo "- 小组件设置（显示明天/配色/密度）也同步进 Keychain"
+            echo
+            echo "安装：SideStore → 导入本 IPA → 出现 App Contains Extensions 时选 **Keep App Extensions (Use Main Profile)**。"
+            echo "验证：打开 App（进入课表页）→ 回桌面 → 添加小组件。若仍为空，空状态的周次位置会显示 \`bridge:<状态码>\`："
+            echo "\`kc-...\` 表示 Keychain 读取失败（扩展与 App 不同 access group），\`ok\` 表示已读到快照但库里没课。"
+          } > "$NOTES"
+          TAG="widgetbridge-${VERSION}"
+          IPA="$IPA_DIR/Bugaoshan-$VERSION-widgetbridge.ipa"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA" --clobber
+            gh release edit "$TAG" --title "Widget bridge $VERSION（实验）" --notes-file "$NOTES" --prerelease
+          else
+            gh release create "$TAG" "$IPA" --title "Widget bridge $VERSION（实验）" --notes-file "$NOTES" --prerelease
+          fi
+
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Widget bridge $VERSION（实验）"
+            echo
+            echo "- 上游 tag: \`${{ inputs.tag }}\`"
+            echo "- Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/widgetbridge-$VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"

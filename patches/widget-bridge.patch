@@ -1,0 +1,308 @@
+diff --git a/ios/CourseWidget/WidgetExtension.swift b/ios/CourseWidget/WidgetExtension.swift
+index ec9595a..166b39d 100644
+--- a/ios/CourseWidget/WidgetExtension.swift
++++ b/ios/CourseWidget/WidgetExtension.swift
+@@ -1,4 +1,5 @@
+ import SQLite3
++import Security
+ import SwiftUI
+ import WidgetKit
+ 
+@@ -34,6 +35,68 @@ struct ScheduleConfig {
+ 
+ let appGroupId = "group.io.github.thebrotherhoodofscu.bugaoshan.ios"
+ 
++// MARK: - Widget bridge（侧载无 App Group 时的 Keychain 快照通道）
++
++let widgetKeychainService = "io.github.thebrotherhoodofscu.bugaoshan.widget"
++
++/// 最近一次 bridge 读取状态，仅用于空状态诊断。
++var widgetBridgeStatus = "init"
++
++func widgetHasAppGroup() -> Bool {
++    return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) != nil
++}
++
++func widgetKeychainRead(account: String) -> Data? {
++    let query: [String: Any] = [
++        kSecClass as String: kSecClassGenericPassword,
++        kSecAttrService as String: widgetKeychainService,
++        kSecAttrAccount as String: account,
++        kSecReturnData as String: true,
++        kSecMatchLimit as String: kSecMatchLimitOne,
++    ]
++    var result: AnyObject?
++    let status = SecItemCopyMatching(query as CFDictionary, &result)
++    if status != errSecSuccess {
++        widgetBridgeStatus = "kc-\(status)"
++        return nil
++    }
++    return result as? Data
++}
++
++func widgetBridgeSettings() -> [String: Any] {
++    guard let data = widgetKeychainRead(account: "settings"),
++          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
++    else { return [:] }
++    return json
++}
++
++/// 从 Keychain 取出主 App 同步的数据库快照，落到扩展自己的缓存目录后返回路径。
++func materializeKeychainSnapshot() -> String? {
++    guard let data = widgetKeychainRead(account: "db"), !data.isEmpty else {
++        print("BugaoShan Widget: no keychain snapshot")
++        return nil
++    }
++    let fileManager = FileManager.default
++    guard let dir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
++        widgetBridgeStatus = "no-cache-dir"
++        return nil
++    }
++    let url = dir.appendingPathComponent("bugaoshan-widget.db")
++    if let existing = try? Data(contentsOf: url), existing == data {
++        widgetBridgeStatus = "ok"
++        return url.path
++    }
++    do {
++        try data.write(to: url, options: .atomic)
++        widgetBridgeStatus = "ok"
++        return url.path
++    } catch {
++        print("BugaoShan Widget: failed to materialize snapshot: \(error)")
++        widgetBridgeStatus = "write-failed"
++        return nil
++    }
++}
++
+ func widgetLocalizedString(_ key: String) -> String {
+     NSLocalizedString(key, bundle: .main, comment: "")
+ }
+@@ -43,10 +106,16 @@ func widgetLocalizedFormat(_ key: String, _ arguments: CVarArg...) -> String {
+ }
+ 
+ func getDatabasePath() -> String? {
+-    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+-        return nil
++    // 正常签名：App Group 里有数据库就直接用。
++    if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) {
++        let path = containerURL.appendingPathComponent("bugaoshan.db").path
++        if FileManager.default.fileExists(atPath: path) {
++            widgetBridgeStatus = "app-group"
++            return path
++        }
+     }
+-    return containerURL.appendingPathComponent("bugaoshan.db").path
++    // 侧载：从 Keychain 还原主 App 同步的快照。
++    return materializeKeychainSnapshot()
+ }
+ 
+ func queryMetadata(_ db: OpaquePointer, key: String) -> String? {
+@@ -604,10 +673,10 @@ func computeNextTransitionMillis(_ courses: [Course], timeSlots: [TimeSlot], cur
+ }
+ 
+ func shouldShowTomorrow() -> Bool {
+-    guard let sharedDefaults = UserDefaults(suiteName: appGroupId) else {
+-        return false
++    if widgetHasAppGroup(), let sharedDefaults = UserDefaults(suiteName: appGroupId) {
++        return sharedDefaults.bool(forKey: "widget_show_tomorrow")
+     }
+-    return sharedDefaults.bool(forKey: "widget_show_tomorrow")
++    return widgetBridgeSettings()["showTomorrow"] as? Bool ?? false
+ }
+ 
+ enum WidgetColorStyle: Int {
+@@ -626,16 +695,20 @@ struct WidgetAppearance {
+ }
+ 
+ func loadWidgetAppearance() -> WidgetAppearance {
+-    guard let sharedDefaults = UserDefaults(suiteName: appGroupId) else {
+-        return WidgetAppearance(colorStyle: .colorful, density: .standard)
++    if widgetHasAppGroup(), let sharedDefaults = UserDefaults(suiteName: appGroupId) {
++        return WidgetAppearance(
++            colorStyle: WidgetColorStyle(
++                rawValue: sharedDefaults.integer(forKey: "widget_color_style")
++            ) ?? .colorful,
++            density: WidgetDensity(
++                rawValue: sharedDefaults.integer(forKey: "widget_density")
++            ) ?? .standard
++        )
+     }
++    let settings = widgetBridgeSettings()
+     return WidgetAppearance(
+-        colorStyle: WidgetColorStyle(
+-            rawValue: sharedDefaults.integer(forKey: "widget_color_style")
+-        ) ?? .colorful,
+-        density: WidgetDensity(
+-            rawValue: sharedDefaults.integer(forKey: "widget_density")
+-        ) ?? .standard
++        colorStyle: WidgetColorStyle(rawValue: settings["colorStyle"] as? Int ?? 0) ?? .colorful,
++        density: WidgetDensity(rawValue: settings["density"] as? Int ?? 0) ?? .standard
+     )
+ }
+ 
+@@ -818,7 +891,7 @@ struct CourseProvider: TimelineProvider {
+             date: now,
+             courses: [],
+             dateText: dateText,
+-            weekText: "",
++            weekText: "bridge:\(widgetBridgeStatus)",
+             isTomorrow: false,
+             isOnVacation: false
+         )
+diff --git a/ios/Runner/AppDelegate.swift b/ios/Runner/AppDelegate.swift
+index bceff92..10d54cc 100644
+--- a/ios/Runner/AppDelegate.swift
++++ b/ios/Runner/AppDelegate.swift
+@@ -1,6 +1,7 @@
+ import Flutter
+ import CoreLocation
+ import EventKit
++import Security
+ import UIKit
+ import WidgetKit
+ 
+@@ -10,6 +11,8 @@ import WidgetKit
+     private let calendarEventIdentifierMapKey = "bugaoshan.calendarEventIdentifiers"
+     private let eventStore = EKEventStore()
+     private let appGroupId = "group.io.github.thebrotherhoodofscu.bugaoshan.ios"
++    // 侧载救援通道：App 与 Widget 扩展无法共享 App Group 时，用 Keychain 传递快照。
++    private let widgetKeychainService = "io.github.thebrotherhoodofscu.bugaoshan.widget"
+     private let reminderChannel = ReminderChannel()
+     private let liveActivityChannel = LiveActivityChannel()
+ 
+@@ -21,6 +24,24 @@ import WidgetKit
+         // 并把回调分发给注册过生命周期代理的插件，但没有任何插件会为本地提醒调
+         // willPresent。没有这一步，用户正在用 App 时提醒会静默丢弃。
+         UNUserNotificationCenter.current().delegate = self
++
++        // widget bridge：进入后台 / 退到后台时把数据库快照写进 Keychain，
++        // 供无法使用 App Group 的侧载环境下的 Widget 扩展读取。
++        NotificationCenter.default.addObserver(
++            self,
++            selector: #selector(handleWidgetBridgeLifecycle),
++            name: UIApplication.didEnterBackgroundNotification,
++            object: nil
++        )
++        NotificationCenter.default.addObserver(
++            self,
++            selector: #selector(handleWidgetBridgeLifecycle),
++            name: UIApplication.willResignActiveNotification,
++            object: nil
++        )
++        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
++            self?.syncWidgetSnapshot()
++        }
+         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+     }
+ 
+@@ -113,10 +134,89 @@ import WidgetKit
+     }
+ 
+     private func updateWidget(result: @escaping FlutterResult) {
++        syncWidgetSnapshot()
+         WidgetCenter.shared.reloadAllTimelines()
+         result(nil)
+     }
+ 
++    // MARK: - Widget bridge（Keychain 快照）
++
++    @objc private func handleWidgetBridgeLifecycle() {
++        syncWidgetSnapshot()
++    }
++
++    /// App 数据库所在位置：优先 App Group，侧载无 App Group 时退回 Application Support。
++    private func appDatabaseURL() -> URL? {
++        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) {
++            let url = container.appendingPathComponent("bugaoshan.db")
++            if FileManager.default.fileExists(atPath: url.path) {
++                return url
++            }
++        }
++        if let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
++            let url = support.appendingPathComponent("bugaoshan.db")
++            if FileManager.default.fileExists(atPath: url.path) {
++                return url
++            }
++        }
++        return nil
++    }
++
++    private func widgetKeychainWrite(_ data: Data, account: String) {
++        let base: [String: Any] = [
++            kSecClass as String: kSecClassGenericPassword,
++            kSecAttrService as String: widgetKeychainService,
++            kSecAttrAccount as String: account,
++        ]
++        SecItemDelete(base as CFDictionary)
++
++        var item = base
++        item[kSecValueData as String] = data
++        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
++        let status = SecItemAdd(item as CFDictionary, nil)
++        if status != errSecSuccess {
++            print("[widgetbridge] keychain write \(account) failed status=\(status)")
++        }
++    }
++
++    private func widgetKeychainRead(account: String) -> Data? {
++        let query: [String: Any] = [
++            kSecClass as String: kSecClassGenericPassword,
++            kSecAttrService as String: widgetKeychainService,
++            kSecAttrAccount as String: account,
++            kSecReturnData as String: true,
++            kSecMatchLimit as String: kSecMatchLimitOne,
++        ]
++        var result: AnyObject?
++        let status = SecItemCopyMatching(query as CFDictionary, &result)
++        guard status == errSecSuccess else { return nil }
++        return result as? Data
++    }
++
++    /// 把当前数据库整库快照写入 Keychain（供 Widget 用内存里的副本查询）。
++    private func syncWidgetSnapshot() {
++        guard let url = appDatabaseURL(), let data = try? Data(contentsOf: url), !data.isEmpty else {
++            print("[widgetbridge] snapshot skipped: database not found")
++            return
++        }
++        widgetKeychainWrite(data, account: "db")
++        print("[widgetbridge] snapshot synced bytes=\(data.count)")
++    }
++
++    private func syncWidgetSettings(showTomorrow: Bool? = nil, colorStyle: Int? = nil, density: Int? = nil) {
++        var settings: [String: Any] = [:]
++        if let existing = widgetKeychainRead(account: "settings"),
++           let json = try? JSONSerialization.jsonObject(with: existing) as? [String: Any] {
++            settings = json
++        }
++        if let value = showTomorrow { settings["showTomorrow"] = value }
++        if let value = colorStyle { settings["colorStyle"] = value }
++        if let value = density { settings["density"] = value }
++        if let data = try? JSONSerialization.data(withJSONObject: settings) {
++            widgetKeychainWrite(data, account: "settings")
++        }
++    }
++
+     private func syncWidgetShowTomorrow(value: Bool, result: @escaping FlutterResult) {
+         guard let sharedDefaults = UserDefaults(suiteName: appGroupId) else {
+             result(FlutterError(
+@@ -139,16 +239,10 @@ import WidgetKit
+         density: Int,
+         result: @escaping FlutterResult
+     ) {
+-        guard let sharedDefaults = UserDefaults(suiteName: appGroupId) else {
+-            result(FlutterError(
+-                code: "APP_GROUP_UNAVAILABLE",
+-                message: "App Group not available",
+-                details: nil
+-            ))
+-            return
+-        }
+-        sharedDefaults.set(colorStyle, forKey: "widget_color_style")
+-        sharedDefaults.set(density, forKey: "widget_density")
++        let sharedDefaults = UserDefaults(suiteName: appGroupId)
++        sharedDefaults?.set(colorStyle, forKey: "widget_color_style")
++        sharedDefaults?.set(density, forKey: "widget_density")
++        syncWidgetSettings(colorStyle: colorStyle, density: density)
+ 
+         WidgetCenter.shared.reloadAllTimelines()
+ 
