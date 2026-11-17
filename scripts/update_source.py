@@ -81,8 +81,9 @@ def make_version_entry(
     download_url: str,
     size: int,
     min_os_version: str,
+    sha256: str = "",
 ) -> dict[str, Any]:
-    return {
+    entry: dict[str, Any] = {
         "version": version,
         "date": date,
         "localizedDescription": notes,
@@ -90,6 +91,10 @@ def make_version_entry(
         "size": size,
         "minOSVersion": min_os_version,
     }
+    # SideStore 在开启校验时（默认开启）会比对 IPA 的 SHA-256；缺省则跳过该检查。
+    if sha256:
+        entry["sha256"] = sha256.lower()
+    return entry
 
 
 def apply_version(
@@ -162,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--size", type=int, required=True, help="IPA 字节数")
     parser.add_argument("--download-url", required=True, help="IPA 下载地址")
     parser.add_argument("--min-os-version", default=config["minOSVersion"])
+    parser.add_argument("--sha256", default="", help="IPA 的 SHA-256（可选，SideStore 会校验）")
     parser.add_argument("--notes-file", default="", help="release notes 文件")
     parser.add_argument("--notes", default="", help="release notes 文本（与 --notes-file 二选一）")
     parser.add_argument("--max-history", type=int, default=0)
@@ -182,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--size 必须为正整数")
     if not args.download_url.startswith("https://"):
         parser.error("--download-url 必须是 https 地址")
+    sha256 = args.sha256.strip().lower()
+    if sha256 and not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        parser.error("--sha256 必须是 64 位十六进制")
 
     if args.notes_file:
         raw_notes = Path(args.notes_file).read_text(encoding="utf-8")
@@ -196,6 +205,7 @@ def main(argv: list[str] | None = None) -> int:
         download_url=args.download_url,
         size=args.size,
         min_os_version=args.min_os_version,
+        sha256=sha256,
     )
 
     try:

@@ -76,6 +76,7 @@ def plan_channel(
         "asset_url": str((asset or {}).get("browser_download_url") or ""),
         "asset_size": int((asset or {}).get("size") or 0),
         "asset_date": str((asset or {}).get("created_at") or "")[:10],
+        "asset_sha256": common.asset_sha256(asset),
     }
 
 

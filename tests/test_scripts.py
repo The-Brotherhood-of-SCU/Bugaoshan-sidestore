@@ -73,17 +73,24 @@ class TagTests(unittest.TestCase):
 
     def test_build_injection(self) -> None:
         tags = parsed(TAGS)
-        # RC 使用「上一正式版」作为 build_name（上游语义）。
+        # 预览版注入 tag 的真实版本号：SideStore 默认校验 IPA 版本与源 JSON 一致，
+        # 且不同 RC 必须能排出先后（否则客户端判断不出“有新预览版”）。
         self.assertEqual(
-            common.build_injection(tags, common.parse_tag("v2.6.0-rc3")), ("2.5.3", "20503")
+            common.build_injection(tags, common.parse_tag("v2.6.0-rc3")), ("2.6.0-rc3", "20600")
         )
         self.assertEqual(
             common.build_injection(tags, common.parse_tag("v2.5.4-preview.48")),
-            ("2.5.3", "20503"),
+            ("2.5.4-preview.48", "20504"),
         )
         self.assertEqual(
             common.build_injection(tags, common.parse_tag("v2.6.0")), ("2.6.0", "20600")
         )
+
+    def test_asset_sha256(self) -> None:
+        digest = "sha256:" + "a" * 64
+        self.assertEqual(common.asset_sha256({"digest": digest}), "a" * 64)
+        self.assertEqual(common.asset_sha256({"digest": None}), "")
+        self.assertEqual(common.asset_sha256(None), "")
 
 
 class PlanTests(unittest.TestCase):
@@ -105,6 +112,7 @@ class PlanTests(unittest.TestCase):
                     "size": size,
                     "browser_download_url": f"https://example.com/{common.asset_name(version)}",
                     "created_at": "2026-11-17T00:00:00Z",
+                    "digest": "sha256:" + "b" * 64,
                 }
             ]
         }
@@ -125,6 +133,7 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(plan["mode"], "reuse")
         self.assertEqual(plan["asset_size"], 123)
         self.assertEqual(plan["asset_date"], "2026-11-17")
+        self.assertEqual(plan["asset_sha256"], "b" * 64)
 
     def test_force_rebuilds(self) -> None:
         plan = self._plan("stable", "2.6.0", self._release("2.6.0"), force=True)
@@ -196,6 +205,27 @@ class UpdateSourceTests(unittest.TestCase):
         long_notes = update_source.clean_notes("x" * 10000, "PROV")
         self.assertLess(len(long_notes), update_source.NOTES_LIMIT + 100)
 
+    def test_sha256_in_entry(self) -> None:
+        entry = update_source.make_version_entry(
+            version="2.6.0-rc3",
+            date="2026-11-17",
+            notes="n",
+            download_url="https://example.com/x.ipa",
+            size=1,
+            min_os_version="15.0",
+            sha256="C" * 64,
+        )
+        self.assertEqual(entry["sha256"], "c" * 64)
+        without = update_source.make_version_entry(
+            version="2.6.0-rc3",
+            date="2026-11-17",
+            notes="n",
+            download_url="https://example.com/x.ipa",
+            size=1,
+            min_os_version="15.0",
+        )
+        self.assertNotIn("sha256", without)
+
     def test_clean_notes_strips_upstream_download_section(self) -> None:
         raw = (
             "## ⬇️ 下载 (Downloads)\n"
@@ -251,6 +281,12 @@ class ValidateTests(unittest.TestCase):
         )
         self.assertEqual(errors, [])
         self.assertTrue(warnings)
+
+    def test_bad_sha256_is_rejected(self) -> None:
+        data = self._valid_source()
+        data["apps"][0]["versions"][0]["sha256"] = "xyz"
+        errors, _ = validate_sources.validate_source("preview", data, CONFIG, repo="o/r")
+        self.assertTrue(any("sha256" in error for error in errors))
 
     def test_broken_source_is_rejected(self) -> None:
         data = self._valid_source()

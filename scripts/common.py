@@ -134,24 +134,21 @@ def release_asset_url(repo: str, tag: str, version: str) -> str:
 
 
 def build_injection(tags: list[Tag], tag: Tag) -> tuple[str, str]:
-    """还原上游 CI 的版本注入语义，返回 ``(build_name, build_number)``。
+    """返回 ``(build_name, build_number)``，即 IPA 的 CFBundleShortVersionString /
+    CFBundleVersion。
 
-    上游规则（见 The-Brotherhood-of-SCU/Bugaoshan 的 release 流水线）：
-    - 正式版：``build_name = X.Y.Z``；
-    - 预览 / RC：``build_name`` 取当时的「上一正式版」（严格小于目标 base 的最高
-      正式 tag），``build_number = major*10000 + minor*100 + patch``。
+    注意：这里**有意**与上游 CI 的注入规则不同。上游构建预览版时把
+    ``build_name`` 写成「上一正式版」（例如 2.6.0-rc3 → 2.5.3），但 SideStore
+    默认开启 App 版本校验（``isAppVersionVerificationEnabled``），安装时要求
+    IPA 的 ``CFBundleShortVersionString`` 与源 JSON 的 ``version`` 完全一致，
+    否则会以 ``mismatchedVersion`` 失败；而且不同 RC 之间版本号相同会让客户端
+    无法判断“有新预览版”。
+
+    因此预览渠道统一注入 tag 的真实版本号（如 ``2.6.0-rc3``），稳定渠道仍是
+    ``X.Y.Z``；``build_number`` 沿用上游公式 ``major*10000 + minor*100 + patch``。
     """
-    if tag.channel == "stable":
-        build_name = tag.version
-    else:
-        candidates = [
-            t for t in tags if t.family is None and t.base < tag.base
-        ]
-        if candidates:
-            build_name = max(candidates, key=lambda t: t.base).version
-        else:
-            build_name = tag.version
-    major, minor, patch = (int(part) for part in build_name.split("."))
+    build_name = tag.version
+    major, minor, patch = tag.base
     return build_name, str(major * 10000 + minor * 100 + patch)
 
 
@@ -214,6 +211,14 @@ def get_release(repo: str, tag: str, token: str | None = None) -> dict[str, Any]
     if status != 200 or not isinstance(payload, dict):
         return None
     return payload
+
+
+def asset_sha256(asset: dict[str, Any] | None) -> str:
+    """GitHub Release 资产自带的 ``digest`` 字段（形如 ``sha256:...``）。"""
+    digest = str((asset or {}).get("digest") or "")
+    if digest.startswith("sha256:"):
+        return digest[len("sha256:") :].strip().lower()
+    return ""
 
 
 def find_ipa_asset(release: dict[str, Any] | None, version: str) -> dict[str, Any] | None:

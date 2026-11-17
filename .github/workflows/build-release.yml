@@ -36,6 +36,7 @@ jobs:
       PLAN_ASSET_URL: ${{ fromJSON(inputs.plan).asset_url }}
       PLAN_ASSET_SIZE: ${{ fromJSON(inputs.plan).asset_size }}
       PLAN_ASSET_DATE: ${{ fromJSON(inputs.plan).asset_date }}
+      PLAN_ASSET_SHA256: ${{ fromJSON(inputs.plan).asset_sha256 }}
       UPSTREAM_DIR: ${{ github.workspace }}/.work/upstream
       IPA_DIR: ${{ github.workspace }}/.work/ipa
       PUB_HOSTED_URL: https://pub.flutter-io.cn
@@ -210,6 +211,7 @@ jobs:
             SIZE="$PLAN_ASSET_SIZE"
             URL="$PLAN_ASSET_URL"
             DATE="$PLAN_ASSET_DATE"
+            SHA256="$PLAN_ASSET_SHA256"
             if [ -z "$URL" ] || [ -z "$SIZE" ]; then
               echo "::error::reuse 模式缺少已有 Release 资产信息"
               exit 1
@@ -218,19 +220,23 @@ jobs:
             SIZE="$(stat -f%z "$IPA_DIR/Bugaoshan-$SRC_VERSION.ipa")"
             URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$SRC_TAG/Bugaoshan-$SRC_VERSION.ipa"
             DATE="$(date -u +%F)"
+            SHA256="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$IPA_DIR/metadata.json")"
           fi
           if [ -z "$DATE" ]; then DATE="$(date -u +%F)"; fi
+          # SideStore 默认会校验 IPA 的 SHA-256；构建模式下由 package_ipa.py 计算，
+          # reuse 模式用 GitHub Release 资产的 digest。
           python3 scripts/update_source.py \
             --channel "$SRC_CHANNEL" \
             --tag "$SRC_TAG" \
             --size "$SIZE" \
             --download-url "$URL" \
             --date "$DATE" \
+            --sha256 "${SHA256:-}" \
             --notes-file "$RUNNER_TEMP/release-notes.md"
 
       - name: Validate source JSON
         shell: bash
-        run: python3 scripts/validate_sources.py --check-urls
+        run: python3 scripts/validate_sources.py --check-urls --check-hashes
 
       - name: Commit source JSON
         shell: bash

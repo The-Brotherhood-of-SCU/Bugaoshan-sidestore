@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -114,6 +115,10 @@ def validate_source(
             if min_os is not None and not _OS_RE.match(str(min_os)):
                 errors.append(f"{label} minOSVersion 格式非法：{min_os!r}")
 
+            sha256 = entry.get("sha256")
+            if sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", str(sha256)):
+                errors.append(f"{label} sha256 必须是 64 位小写十六进制")
+
         latest = versions[0]
         if app.get("version") != latest.get("version"):
             errors.append("App 顶层 version 与 versions[0].version 不一致")
@@ -123,6 +128,17 @@ def validate_source(
             errors.append("App 顶层 size 与 versions[0].size 不一致")
 
     return errors, warnings
+
+
+def download_sha256(url: str, timeout: int = 180) -> str:
+    digest = hashlib.sha256()
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "bugaoshan-sidestore-validate"}
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        for chunk in iter(lambda: response.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def head_size(url: str, timeout: int = 60) -> tuple[int, int | None]:
@@ -148,6 +164,9 @@ def head_size(url: str, timeout: int = 60) -> tuple[int, int | None]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check-urls", action="store_true", help="校验最新 IPA 的下载地址")
+    parser.add_argument(
+        "--check-hashes", action="store_true", help="下载最新 IPA 并校验 JSON 中的 sha256"
+    )
     parser.add_argument("--repo", default=common.env("GITHUB_REPOSITORY"))
     args = parser.parse_args(argv)
 
@@ -186,6 +205,15 @@ def main(argv: list[str] | None = None) -> int:
                     f"✗ {path.name}: 远程大小 {length} 与 JSON size {latest['size']} 不一致"
                 )
                 failed = True
+            elif args.check_hashes and latest.get("sha256"):
+                actual = download_sha256(latest["downloadURL"])
+                if actual != latest["sha256"]:
+                    print(
+                        f"✗ {path.name}: IPA sha256 {actual} 与 JSON {latest['sha256']} 不一致"
+                    )
+                    failed = True
+                else:
+                    print(f"✓ {path.name}: 最新版本 {latest['version']} 下载地址与 sha256 均通过")
             else:
                 print(f"✓ {path.name}: 最新版本 {latest['version']} 下载地址可访问")
 
