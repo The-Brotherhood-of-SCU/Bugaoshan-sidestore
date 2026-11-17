@@ -27,7 +27,7 @@
       "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     min-height: 100vh;
   }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 56px 22px 72px; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 56px 22px 72px; }
   header.hero { display: flex; gap: 22px; align-items: center; }
   header.hero img {
     width: 92px; height: 92px; border-radius: 22px;
@@ -40,8 +40,9 @@
     font-size: 12px; padding: 3px 10px; border-radius: 999px;
     background: #f1e7e2; color: var(--red); border: 1px solid #ead9d2;
   }
+  .badge.mirror { background: #eef3ea; color: #3f6b3a; border-color: #dde8d8; }
   .channels { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 38px 0 10px; }
-  @media (max-width: 760px) { .channels { grid-template-columns: 1fr; } }
+  @media (max-width: 800px) { .channels { grid-template-columns: 1fr; } }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
     padding: 24px; box-shadow: 0 10px 34px rgba(28, 25, 23, .05);
@@ -56,15 +57,21 @@
   .desc { color: var(--muted); font-size: 14px; margin: 0; }
   .meta { font-size: 13px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
   .meta b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .src {
+    border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+    background: #fcfaf6; display: flex; flex-direction: column; gap: 10px;
+  }
+  .src-head { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .src-head .hint { font-weight: 400; color: var(--muted); font-size: 12px; }
   .url {
     font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
     background: #f7f3ec; border: 1px dashed var(--line); border-radius: 10px;
     padding: 10px 12px; word-break: break-all; color: #57504a;
   }
-  .buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+  .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
   .btn {
     appearance: none; border: 0; cursor: pointer; text-decoration: none;
-    border-radius: 11px; padding: 10px 16px; font-size: 14px; font-weight: 600;
+    border-radius: 10px; padding: 8px 13px; font-size: 13px; font-weight: 600;
     background: var(--red); color: #fff; transition: transform .12s ease, background .12s ease;
     display: inline-flex; align-items: center; gap: 6px;
   }
@@ -73,7 +80,9 @@
     background: #f4efe7; color: var(--ink); border: 1px solid var(--line);
   }
   .btn.secondary:hover { background: #ece5da; }
-  .copy-state { font-size: 13px; color: var(--red); min-height: 20px; }
+  .btn.mirror { background: #3f6b3a; }
+  .btn.mirror:hover { background: #33572f; }
+  .copy-state { font-size: 12px; color: var(--red); min-height: 18px; }
   section.usage {
     margin-top: 34px; background: rgba(255, 255, 255, .6); border: 1px solid var(--line);
     border-radius: var(--radius); padding: 26px 26px 20px;
@@ -100,6 +109,7 @@
       <div class="badges">
         <span class="badge">未签名 IPA</span>
         <span class="badge">SideStore / AltStore</span>
+        <span class="badge mirror">国内镜像可用</span>
         <span class="badge">AGPL-3.0</span>
       </div>
     </div>
@@ -110,26 +120,56 @@
       <h2>预览版 <span class="tag">Preview</span></h2>
       <p class="desc">跟随上游 <code>vX.Y.Z-preview</code> / <code>-preview.N</code> / <code>-rcN</code> tag，上游发一个就同步构建一个。</p>
       <div class="meta" id="preview-meta"><span class="dot"></span> 正在读取源…</div>
-      <div class="url" id="preview-url"></div>
-      <div class="buttons">
-        <a class="btn" id="preview-side" href="#">在 SideStore 中添加</a>
-        <a class="btn secondary" id="preview-alt" href="#">AltStore</a>
-        <button class="btn secondary" data-copy="preview">复制链接</button>
+
+      <div class="src">
+        <div class="src-head">GitHub 直连 <span class="hint">需要能访问 raw.githubusercontent.com</span></div>
+        <div class="url" id="preview-direct-url"></div>
+        <div class="buttons">
+          <a class="btn" id="preview-direct-side" href="#">SideStore 添加</a>
+          <a class="btn secondary" id="preview-direct-alt" href="#">AltStore</a>
+          <button class="btn secondary" data-copy="preview-direct">复制</button>
+        </div>
+        <div class="copy-state" id="preview-direct-copy"></div>
       </div>
-      <div class="copy-state" id="preview-copy"></div>
+
+      <div class="src">
+        <div class="src-head">国内镜像 <span class="hint">gh-proxy.com 加速</span></div>
+        <div class="url" id="preview-mirror-url"></div>
+        <div class="buttons">
+          <a class="btn mirror" id="preview-mirror-side" href="#">SideStore 添加</a>
+          <a class="btn secondary" id="preview-mirror-alt" href="#">AltStore</a>
+          <button class="btn secondary" data-copy="preview-mirror">复制</button>
+        </div>
+        <div class="copy-state" id="preview-mirror-copy"></div>
+      </div>
     </div>
 
     <div class="card">
       <h2>正式版 <span class="tag ghost">Stable</span></h2>
       <p class="desc">只跟随上游正式 Release 的 <code>vX.Y.Z</code> tag，与 App Store 版本同源。</p>
       <div class="meta" id="stable-meta"><span class="dot"></span> 正在读取源…</div>
-      <div class="url" id="stable-url"></div>
-      <div class="buttons">
-        <a class="btn" id="stable-side" href="#">在 SideStore 中添加</a>
-        <a class="btn secondary" id="stable-alt" href="#">AltStore</a>
-        <button class="btn secondary" data-copy="stable">复制链接</button>
+
+      <div class="src">
+        <div class="src-head">GitHub 直连 <span class="hint">需要能访问 raw.githubusercontent.com</span></div>
+        <div class="url" id="stable-direct-url"></div>
+        <div class="buttons">
+          <a class="btn" id="stable-direct-side" href="#">SideStore 添加</a>
+          <a class="btn secondary" id="stable-direct-alt" href="#">AltStore</a>
+          <button class="btn secondary" data-copy="stable-direct">复制</button>
+        </div>
+        <div class="copy-state" id="stable-direct-copy"></div>
       </div>
-      <div class="copy-state" id="stable-copy"></div>
+
+      <div class="src">
+        <div class="src-head">国内镜像 <span class="hint">gh-proxy.com 加速</span></div>
+        <div class="url" id="stable-mirror-url"></div>
+        <div class="buttons">
+          <a class="btn mirror" id="stable-mirror-side" href="#">SideStore 添加</a>
+          <a class="btn secondary" id="stable-mirror-alt" href="#">AltStore</a>
+          <button class="btn secondary" data-copy="stable-mirror">复制</button>
+        </div>
+        <div class="copy-state" id="stable-mirror-copy"></div>
+      </div>
     </div>
   </div>
 
@@ -137,24 +177,31 @@
     <h3>怎么用</h3>
     <ol>
       <li>在 iPhone 上装好 <a href="https://sidestore.io">SideStore</a>（或 AltStore），并完成一次配对 / 登录你自己的 Apple ID。</li>
-      <li>点上面的「在 SideStore 中添加」，或手动打开 SideStore → <code>Sources</code> → <code>+</code>，粘贴 <code>…/preview.json</code> 或 <code>…/stable.json</code>。</li>
-      <li>在源里找到「不高山上」，安装即可；IPA 是未签名的，安装时由 SideStore 用你的证书重新签名。</li>
-      <li>之后源 JSON 会随上游自动更新，SideStore 里会提示新版本。</li>
+      <li>点上面的「SideStore 添加」，或手动打开 SideStore → <code>Sources</code> → <code>+</code>，粘贴源地址。</li>
+      <li><b>中国大陆网络建议用「国内镜像」地址</b>：JSON、图标、截图、IPA 都经由 gh-proxy.com 转发；直连地址需要能访问 GitHub。</li>
+      <li>在源里找到「不高山上」，安装即可；IPA 未签名，安装时由 SideStore 用你的证书重新签名。</li>
+      <li>源 JSON 会随上游自动更新，SideStore 里会出现新版本。</li>
     </ol>
-    <p class="desc" style="margin-top:14px">预览版与正式版是两份独立源、同一个 Bundle ID，同一时间只能装其中一个；切换渠道前先卸载旧版本。</p>
+    <p class="desc" style="margin-top:14px">预览版与正式版是两份独立源、同一个 Bundle ID，同一时间只能装其中一个；切换渠道前先卸载旧版本。镜像源与直连源也是同一份版本内容，选一个加入即可，不必同时添加。</p>
   </section>
 
   <footer>
     上游源码：<a href="https://github.com/The-Brotherhood-of-SCU/Bugaoshan">The-Brotherhood-of-SCU/Bugaoshan</a>（AGPL-3.0）；
     本仓库只做 iOS 未签名包的自动构建与源分发，非官方渠道，正式版请以 App Store 为准。<br />
+    镜像由第三方服务 <a href="https://gh-proxy.com/docs/github-accelerator">gh-proxy.com</a> 提供加速，可用性取决于该服务；
     图标与截图来自上游项目，版权归原作者所有。
   </footer>
 </div>
 
 <script>
-  const BASE = {
-    preview: new URL('preview.json', location.href).href,
-    stable: new URL('stable.json', location.href).href,
+  const RAW_BASE = 'https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/';
+  const MIRROR_PREFIX = 'https://gh-proxy.com/';
+
+  const SOURCES = {
+    'preview-direct': { channel: 'preview', url: new URL('preview.json', location.href).href },
+    'preview-mirror': { channel: 'preview', url: MIRROR_PREFIX + RAW_BASE + 'preview-mirror.json' },
+    'stable-direct': { channel: 'stable', url: new URL('stable.json', location.href).href },
+    'stable-mirror': { channel: 'stable', url: MIRROR_PREFIX + RAW_BASE + 'stable-mirror.json' },
   };
 
   function formatBytes(bytes) {
@@ -164,15 +211,17 @@
     return Math.round(value / 1024) + ' KB';
   }
 
-  for (const [channel, url] of Object.entries(BASE)) {
-    document.getElementById(channel + '-url').textContent = url;
-    const side = document.getElementById(channel + '-side');
-    side.href = 'sidestore://source?url=' + encodeURIComponent(url);
-    const alt = document.getElementById(channel + '-alt');
-    alt.href = 'altstore://source?url=' + encodeURIComponent(url);
+  for (const [key, item] of Object.entries(SOURCES)) {
+    document.getElementById(key + '-url').textContent = item.url;
+    document.getElementById(key + '-side').href =
+      'sidestore://source?url=' + encodeURIComponent(item.url);
+    document.getElementById(key + '-alt').href =
+      'altstore://source?url=' + encodeURIComponent(item.url);
+  }
 
+  for (const channel of ['preview', 'stable']) {
     const meta = document.getElementById(channel + '-meta');
-    fetch(url, { cache: 'no-store' })
+    fetch(new URL(channel + '.json', location.href).href, { cache: 'no-store' })
       .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
       .then((data) => {
         const latest = data?.apps?.[0]?.versions?.[0];
@@ -192,9 +241,9 @@
 
   document.querySelectorAll('[data-copy]').forEach((button) => {
     button.addEventListener('click', async () => {
-      const channel = button.dataset.copy;
-      const url = BASE[channel];
-      const tip = document.getElementById(channel + '-copy');
+      const key = button.dataset.copy;
+      const url = SOURCES[key].url;
+      const tip = document.getElementById(key + '-copy');
       try {
         await navigator.clipboard.writeText(url);
         tip.textContent = '已复制源地址';

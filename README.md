@@ -6,15 +6,22 @@
 
 ## 源地址
 
-| 渠道 | 源 JSON | 跟随的上游 tag | 说明 |
-| --- | --- | --- | --- |
-| 预览版 | `https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/preview.json` | `vX.Y.Z-preview`、`vX.Y.Z-preview.N`、`vX.Y.Z-rcN` | 上游每发一个新 tag 就自动构建 |
-| 正式版 | `https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/stable.json` | `vX.Y.Z`（正式 Release） | 只跟随正式版 |
+| 渠道 | 直连源（GitHub） | 国内镜像源（gh-proxy 加速） |
+| --- | --- | --- |
+| 预览版 | `https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/preview.json` | `https://gh-proxy.com/https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/preview-mirror.json` |
+| 正式版 | `https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/stable.json` | `https://gh-proxy.com/https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/stable-mirror.json` |
 
-GitHub Pages 镜像（适合 raw 访问受限的网络）：
+| 渠道 | 跟随的上游 tag | 说明 |
+| --- | --- | --- |
+| 预览版 | `vX.Y.Z-preview`、`vX.Y.Z-preview.N`、`vX.Y.Z-rcN` | 上游每发一个新 tag 就自动构建 |
+| 正式版 | `vX.Y.Z`（正式 Release） | 只跟随正式版 |
 
-- `https://wjj-8283.github.io/Bugaoshan-sidestore/preview.json`
-- `https://wjj-8283.github.io/Bugaoshan-sidestore/stable.json`
+**国内镜像源**：按 [gh-proxy.com 的加速方式](https://gh-proxy.com/docs/github-accelerator)，在原始
+GitHub 链接前拼接 `https://gh-proxy.com/`。镜像源里的 `sourceURL`、`iconURL`、截图和 IPA
+`downloadURL` 全部走镜像前缀，所以中国大陆网络下也能加载图标、下载安装包。镜像 JSON 由 CI
+自动从直连源生成（`scripts/make_mirror.py`），版本、大小、SHA-256 与直连源完全一致。
+
+GitHub Pages 落地页（含一键添加按钮）：<https://wjj-8283.github.io/Bugaoshan-sidestore/>
 
 点一下就直接添加（iOS 上打开链接会唤起对应 App）：
 
@@ -44,9 +51,10 @@ schedule(每 30 分钟) / manual dispatch
    ├─ flutter build ios --release --no-codesign
    ├─ package_ipa.py 打包成 Payload/Runner.app → .ipa
    ├─ 发布 GitHub Release（tag 与上游同名）+ IPA 资产
-   ├─ update_source.py 写回源 JSON（保留最近 N 个历史版本）
-   ├─ validate_sources.py 校验（含下载地址 HEAD 校验）
-   └─ 提交并推送 JSON（rebase 重试，避免并发冲突）
+   ├─ update_source.py 写回直连源 JSON（保留最近 N 个历史版本）
+   ├─ make_mirror.py 生成国内镜像源 JSON（所有 GitHub 链接套 gh-proxy 前缀）
+   ├─ validate_sources.py 校验直连源 + 镜像源（含下载地址/大小/SHA-256）
+   └─ 提交并推送 4 个 JSON（直连/镜像 × 预览/正式；rebase 重试）
 ```
 
 几个刻意与上游对齐的细节：
@@ -99,12 +107,15 @@ python3 -m unittest discover -s tests -v        # 单元测试
 ## 目录结构
 
 ```
-preview.json                 # 预览版源 JSON（CI 维护，不要手改结构）
-stable.json                  # 正式版源 JSON（CI 维护）
+preview.json                 # 预览版直连源（CI 维护，不要手改结构）
+stable.json                  # 正式版直连源
+preview-mirror.json          # 预览版国内镜像源（由 make_mirror.py 生成）
+stable-mirror.json           # 正式版国内镜像源
 config/source.json           # 静态元数据：应用信息、源标识、图标截图路径、历史长度
 scripts/plan.py              # 解析上游 tag + 决定是否构建
 scripts/update_source.py     # 把新版本写回源 JSON
-scripts/validate_sources.py  # 源 JSON 校验（可校验下载地址）
+scripts/make_mirror.py       # 直连源 → 国内镜像源（gh-proxy 前缀）
+scripts/validate_sources.py  # 直连/镜像源校验（可校验下载地址与 SHA-256）
 scripts/package_ipa.py       # .app → .ipa 打包（保留符号链接/权限位）
 scripts/common.py            # tag 解析、版本注入、GitHub API 等公共逻辑
 tests/test_scripts.py        # 单元测试（不联网）
@@ -127,6 +138,9 @@ assets/                      # 图标与截图（来自上游）
 - 小组件（CourseWidget 扩展）在侧载签名时可能被 SideStore 移除，App 本体不受影响。
 - IPA 未签名、未公证；下载后如校验失败，可在 Release 页面核对文件大小并重新下载。
 - 本仓库只发布 iOS IPA，不镜像 Android APK / Windows / Linux 产物。
+- 国内镜像依赖第三方服务 [gh-proxy.com](https://gh-proxy.com/docs/github-accelerator)，它只做转发、
+  不托管文件；若该服务临时故障，源会暂时加载失败，可换回直连地址或稍后重试。镜像可用性只做告警，
+  不会阻断 CI 发布。
 
 ## 可用性自检（每次发布前后都会做）
 
@@ -141,4 +155,6 @@ CI 发布前会执行 `scripts/validate_sources.py --check-urls --check-hashes`�
 | IPA 内 `CFBundleShortVersionString` 与 JSON `version` 一致 | 通过（`2.6.0-rc3` / `2.6.0`） |
 | IPA 未签名（`codesign -dv` → not signed） | 通过，SideStore 安装时重签 |
 | 图标 / 3 张截图 / IPA 下载地址 HTTP 200 | 通过 |
-| GitHub Pages 镜像 | 通过（`/preview.json`、`/stable.json` 均为最新） |
+| 镜像源结构 / URL 前缀 / 版本与直连一致 | 通过（CI 每次发布都会校验） |
+| 镜像站实际可达、IPA 经代理下载后 SHA-256 一致 | 通过（gh-proxy.com，实测字节一致） |
+| GitHub Pages 落地页 | 通过（`/preview.json`、`/stable.json` 及镜像源均可用） |

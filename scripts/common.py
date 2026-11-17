@@ -26,6 +26,13 @@ CONFIG_PATH = ROOT / "config" / "source.json"
 WORK_DIR = ROOT / ".work"
 
 CHANNEL_FILES = {"preview": "preview.json", "stable": "stable.json"}
+MIRROR_FILES = {"preview": "preview-mirror.json", "stable": "stable-mirror.json"}
+GITHUB_HOSTS = (
+    "https://github.com/",
+    "https://raw.githubusercontent.com/",
+    "https://raw.github.com/",
+    "https://api.github.com/",
+)
 CHANNEL_PRERELEASE = {"preview": True, "stable": False}
 _FAMILY_RANK = {"preview": 0, "rc": 1, None: 2}
 
@@ -83,12 +90,6 @@ def load_config() -> dict[str, Any]:
     return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
 
-def source_path(channel: str) -> Path:
-    if channel not in CHANNEL_FILES:
-        raise ValueError(f"未知渠道：{channel}")
-    return ROOT / CHANNEL_FILES[channel]
-
-
 def read_source(channel: str) -> dict[str, Any]:
     path = source_path(channel)
     if not path.exists():
@@ -113,6 +114,40 @@ def latest_source_version(channel: str) -> str | None:
         return None
     version = versions[0].get("version")
     return version if isinstance(version, str) and version else None
+
+
+def source_path(channel: str) -> Path:
+    if channel not in CHANNEL_FILES:
+        raise ValueError(f"未知渠道：{channel}")
+    return ROOT / CHANNEL_FILES[channel]
+
+
+def mirror_filename(channel: str) -> str:
+    if channel not in MIRROR_FILES:
+        raise ValueError(f"未知渠道：{channel}")
+    return MIRROR_FILES[channel]
+
+
+def mirror_source_path(channel: str) -> Path:
+    return ROOT / mirror_filename(channel)
+
+
+def mirror_prefix(config: dict[str, Any]) -> str:
+    prefix = str(config.get("mirror", {}).get("prefix") or "").strip()
+    if not prefix:
+        raise ValueError("config 缺少 mirror.prefix")
+    return prefix.rstrip("/") + "/"
+
+
+def mirror_url(prefix: str, url: str) -> str:
+    """给 GitHub 资源 URL 套上镜像前缀；非 GitHub URL 原样返回。"""
+    if not url:
+        return url
+    if url.startswith(prefix):
+        return url
+    if url.startswith(GITHUB_HOSTS):
+        return prefix + url
+    return url
 
 
 def public_url(config: dict[str, Any], relative_path: str) -> str:

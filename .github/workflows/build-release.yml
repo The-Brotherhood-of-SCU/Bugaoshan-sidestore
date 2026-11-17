@@ -235,15 +235,20 @@ jobs:
             --sha256 "${SHA256:-}" \
             --notes-file "$RUNNER_TEMP/release-notes.md"
 
+      - name: Generate mirror source JSON
+        shell: bash
+        run: python3 scripts/make_mirror.py --channel "$SRC_CHANNEL"
+
       - name: Validate source JSON
         shell: bash
+        # 镜像站（第三方代理）抖动只告警、不阻断发布；直连地址与哈希必须通过。
         run: python3 scripts/validate_sources.py --check-urls --check-hashes
 
       - name: Commit source JSON
         shell: bash
         run: |
           set -euo pipefail
-          git add preview.json stable.json
+          git add preview.json stable.json preview-mirror.json stable-mirror.json
           if git diff --cached --quiet; then
             echo "源 JSON 没有变化，跳过提交"
             exit 0

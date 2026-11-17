@@ -96,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _site
-          cp preview.json stable.json _site/
+          cp preview.json stable.json preview-mirror.json stable-mirror.json _site/
           cp -r site/. _site/
           cp -r assets _site/assets
 

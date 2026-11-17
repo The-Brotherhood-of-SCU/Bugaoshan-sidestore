@@ -7,8 +7,7 @@ on:
       - "scripts/**"
       - "tests/**"
       - "config/**"
-      - "preview.json"
-      - "stable.json"
+      - "*.json"
       - ".github/workflows/validate.yml"
   pull_request:
   workflow_dispatch:

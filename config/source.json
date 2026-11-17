@@ -26,5 +26,9 @@
       "sourceIdentifier": "io.github.thebrotherhoodofscu.bugaoshan.ios.altsource.stable",
       "maxHistory": 50
     }
+  },
+  "mirror": {
+    "prefix": "https://gh-proxy.com/",
+    "nameSuffix": "（国内镜像）"
   }
 }

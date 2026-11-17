@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import common  # noqa: E402
+import make_mirror  # noqa: E402
 import package_ipa  # noqa: E402
 import plan as plan_module  # noqa: E402
 import update_source  # noqa: E402
@@ -317,6 +318,86 @@ class ValidateTests(unittest.TestCase):
         data["identifier"] = CONFIG["channels"]["preview"]["sourceIdentifier"]
         errors, _ = validate_sources.validate_source("preview", data, CONFIG, repo="o/r")
         self.assertTrue(any("不属于 preview" in error for error in errors))
+
+
+class MirrorTests(unittest.TestCase):
+    def _direct(self, channel: str = "preview") -> dict:
+        data: dict = {"apps": []}
+        versions = ("2.6.0-rc3", "2.6.0-rc2") if channel == "preview" else ("2.6.0",)
+        for version in versions:
+            data = update_source.apply_version(
+                data,
+                CONFIG,
+                channel,
+                update_source.make_version_entry(
+                    version=version,
+                    date="2026-11-17",
+                    notes="notes",
+                    download_url=(
+                        "https://github.com/o/r/releases/download/"
+                        f"v{version}/{common.asset_name(version)}"
+                    ),
+                    size=100,
+                    min_os_version="15.0",
+                    sha256="a" * 64,
+                ),
+                max_history=20,
+            )
+        return data
+
+    def test_build_and_validate_mirror(self) -> None:
+        direct = self._direct()
+        mirror = make_mirror.build_mirror_source(direct, CONFIG, "preview")
+        prefix = common.mirror_prefix(CONFIG)
+        channel_config = CONFIG["channels"]["preview"]
+
+        self.assertEqual(mirror["identifier"], channel_config["sourceIdentifier"] + ".mirror")
+        self.assertTrue(mirror["sourceURL"].startswith(prefix))
+        self.assertIn("mirror", mirror["sourceURL"])
+        self.assertEqual(mirror["name"], channel_config["sourceName"] + CONFIG["mirror"]["nameSuffix"])
+
+        app = mirror["apps"][0]
+        self.assertTrue(app["iconURL"].startswith(prefix))
+        for url in app["screenshotURLs"]:
+            self.assertTrue(url.startswith(prefix))
+        for entry in app["versions"]:
+            self.assertTrue(entry["downloadURL"].startswith(prefix))
+            self.assertNotIn("github.com/wjj-8283", entry["downloadURL"].replace(prefix, ""))
+
+        errors, warnings = validate_sources.validate_mirror_source(
+            "preview", mirror, direct, CONFIG
+        )
+        self.assertEqual(errors, [])
+
+    def test_unmirrored_url_is_rejected(self) -> None:
+        direct = self._direct()
+        mirror = make_mirror.build_mirror_source(direct, CONFIG, "preview")
+        mirror["apps"][0]["versions"][0]["downloadURL"] = direct["apps"][0]["versions"][0][
+            "downloadURL"
+        ]
+        errors, _ = validate_sources.validate_mirror_source("preview", mirror, direct, CONFIG)
+        self.assertTrue(any("downloadURL" in error for error in errors))
+
+    def test_mirror_version_data_must_match_direct(self) -> None:
+        direct = self._direct()
+        mirror = make_mirror.build_mirror_source(direct, CONFIG, "preview")
+        mirror["apps"][0]["versions"][0]["size"] = 999
+        errors, _ = validate_sources.validate_mirror_source("preview", mirror, direct, CONFIG)
+        self.assertTrue(any("size" in error for error in errors))
+
+        broken = make_mirror.build_mirror_source(direct, CONFIG, "preview")
+        broken["apps"][0]["versions"].pop()
+        errors, _ = validate_sources.validate_mirror_source("preview", broken, direct, CONFIG)
+        self.assertTrue(any("版本集合" in error for error in errors))
+
+    def test_mirror_url_idempotent_and_passthrough(self) -> None:
+        prefix = common.mirror_prefix(CONFIG)
+        url = "https://github.com/o/r/releases/download/v1/x.ipa"
+        once = common.mirror_url(prefix, url)
+        self.assertEqual(common.mirror_url(prefix, once), once)
+        self.assertEqual(
+            common.mirror_url(prefix, "https://example.com/a.png"), "https://example.com/a.png"
+        )
 
 
 class PackageIpaTests(unittest.TestCase):
