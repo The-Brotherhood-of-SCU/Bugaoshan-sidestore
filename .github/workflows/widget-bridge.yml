@@ -147,9 +147,9 @@ jobs:
           IPA="$IPA_DIR/Bugaoshan-$VERSION-widgetbridge.ipa"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$IPA" --clobber
-            gh release edit "$TAG" --title "Widget bridge $VERSION（实验）" --notes-file "$NOTES" --prerelease
+            gh release edit "$TAG" --title "Widget bridge ${VERSION} 实验版" --notes-file "$NOTES" --prerelease
           else
-            gh release create "$TAG" "$IPA" --title "Widget bridge $VERSION（实验）" --notes-file "$NOTES" --prerelease
+            gh release create "$TAG" "$IPA" --title "Widget bridge ${VERSION} 实验版" --notes-file "$NOTES" --prerelease
           fi
 
       - name: Job summary
@@ -157,7 +157,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### Widget bridge $VERSION（实验）"
+            echo "### Widget bridge ${VERSION} 实验版"
             echo
             echo "- 上游 tag: \`${{ inputs.tag }}\`"
             echo "- Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/widgetbridge-$VERSION"
