@@ -5,7 +5,7 @@
   "name": "不高山上",
   "developerName": "The Brotherhood of SCU",
   "subtitle": "四川大学学生专属校园助手",
-  "localizedDescription": "不高山上（Bugaoshan）是一款自由开源的四川大学（SCU）校园助手，把课表、成绩、第二课堂、培养方案、考表、体测、电费等校园服务聚合到一个 App 里。\n\n主要功能：\n• 课表管理：多来源导入课表、桌面小组件、导出 ICS 日历\n• 成绩统计：自定义统计与通过率分析\n• 方案修读情况与培养方案查询\n• 第二课堂活动浏览、报名与学分\n• 考表、体测、电费、校历等查询\n• 校园网无感认证、在线报修等\n\n本源的 IPA 由 GitHub Actions 从上游源码自动构建，是未签名包：安装时由 SideStore / AltStore 使用你自己的开发者证书重新签名。本仓库不是官方分发渠道，正式上架版本请以 App Store 为准。\n\n⚠️ 桌面小组件依赖上游 App Group（该标识全局唯一、归上游开发者所有，侧载重签时会被追加你的 TeamID 而失配），因此无论免费还是付费 Apple ID 侧载，小组件都无法使用（App 本体正常）；需要小组件请使用 App Store 版本。",
+  "localizedDescription": "不高山上（Bugaoshan）是一款自由开源的四川大学（SCU）校园助手，把课表、成绩、第二课堂、培养方案、考表、体测、电费等校园服务聚合到一个 App 里。\n\n主要功能：\n• 课表管理：多来源导入课表、桌面小组件、导出 ICS 日历\n• 成绩统计：自定义统计与通过率分析\n• 方案修读情况与培养方案查询\n• 第二课堂活动浏览、报名与学分\n• 考表、体测、电费、校历等查询\n• 校园网无感认证、在线报修等\n\n本源的 IPA 由 GitHub Actions 从上游源码自动构建，是未签名包：安装时由 SideStore / AltStore 使用你自己的开发者证书重新签名。本仓库不是官方分发渠道，正式上架版本请以 App Store 为准。\n\n⚠️ 桌面小组件依赖上游 App Group（该标识全局唯一、归上游开发者所有，侧载重签时会被追加你的 TeamID 而失配），因此无论免费还是付费 Apple ID 侧载，小组件都无法使用；实时活动不依赖共享容器，侧载可正常使用，安装时选 Keep App Extensions (Use Main Profile) 即可保留。需要小组件请使用 App Store 版本。",
   "tintColor": "#991F20",
   "iconPath": "assets/icon.png",
   "screenshotPaths": [
