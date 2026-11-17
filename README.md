@@ -129,6 +129,25 @@ assets/                      # 图标与截图（来自上游）
 .github/workflows/pages.yml         # Pages 部署
 ```
 
+## 小组件（CourseWidget）为什么用不了
+
+上游的课表小组件通过 App Group `group.io.github.thebrotherhoodofscu.bugaoshan.ios` 和 App 共享
+数据库与偏好设置（`flutter_app_group_directory` + `UserDefaults(suiteName:)`）。App Group 属于
+**需要付费 Apple Developer Program** 才能签发的能力（免费 Personal Team 没有这个 capability，
+SideStore 走 Apple 官方开发者接口创建 App Group 会失败），所以：
+
+- **免费 Apple ID 侧载**：SideStore 无法为 App Group 下发描述文件。本源的未签名 IPA 也刻意
+  **不携带** App Group entitlement——如果带上，SideStore 会尝试创建 App Group 并在签名阶段报错，
+  连 App 都装不上。结果是 App 退回自己的沙盒目录存数据库，小组件读不到共享容器，显示空白/占位。
+- **安装时 SideStore 询问是否移除扩展**：移除可以少占一个 App ID（免费账号只有 3 个），但小组件
+  彻底没有；保留则多一个空白小组件。
+- **有付费开发者账号**：用带 App Group 的描述文件重新签名（Xcode 真机运行、或签名工具手动注入
+  entitlement）后，小组件才能正常工作。
+- **想直接用小组件**：请使用 [App Store 版本](https://apps.apple.com/cn/app/id6813305962)，
+  官方签名包含完整的 App Group 能力。
+
+这是侧载签名的固有限制，不是本仓库的构建问题。
+
 ## 注意事项
 
 - **这是非官方分发**。上游同时在 App Store 分发正式版；侧载渠道仅作调试/尝鲜用途，
