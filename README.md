@@ -141,10 +141,15 @@ SideStore 走 Apple 官方开发者接口创建 App Group 会失败），所以�
   连 App 都装不上。结果是 App 退回自己的沙盒目录存数据库，小组件读不到共享容器，显示空白/占位。
 - **安装时 SideStore 询问是否移除扩展**：移除可以少占一个 App ID（免费账号只有 3 个），但小组件
   彻底没有；保留则多一个空白小组件。
-- **有付费开发者账号**：用带 App Group 的描述文件重新签名（Xcode 真机运行、或签名工具手动注入
-  entitlement）后，小组件才能正常工作。
-- **想直接用小组件**：请使用 [App Store 版本](https://apps.apple.com/cn/app/id6813305962)，
-  官方签名包含完整的 App Group 能力。
+- **有付费开发者账号也不行（SideStore/AltStore 重签场景）**：App Group 标识是全局唯一的，
+  `group.io.github.thebrotherhoodofscu.bugaoshan.ios` 归上游开发者的 Team 所有，别人无法复用。
+  SideStore 在 `adjustedGroupIdentifier` 里会给它追加你自己的 TeamID
+  （变成 `group.io.github.thebrotherhoodofscu.bugaoshan.ios.<TEAMID>`），而 App 与小组件代码里
+  写死的是原标识，双方对不上，共享容器依然读不到。
+- **想真正用上小组件**：用 [App Store 版本](https://apps.apple.com/cn/app/id6813305962)；
+  或者自己从上游源码构建，把 `lib/services/database_service.dart`、`ios/Runner/AppDelegate.swift`、
+  `ios/Runner/ReminderChannel.swift`、`ios/CourseWidget/WidgetExtension.swift` 里的 group 标识
+  改成你自己 Team 拥有的 App Group，再用 Xcode 真机安装。
 
 这是侧载签名的固有限制，不是本仓库的构建问题。
 
