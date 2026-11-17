@@ -33,6 +33,12 @@ GitHub Pages 落地页（含一键添加按钮）：<https://wjj-8283.github.io/
 > 两个渠道共用同一个 Bundle ID（`io.github.thebrotherhoodofscu.bugaoshan.ios`），
 > 同一台设备同一时间只能安装其中一个渠道的版本；每个渠道的直连源与镜像源内容相同，加一个即可。
 
+> 如果你想同时使用梯子和本地回环（SideStore签名），你可以在Clash的TUN规则中增加以下内容：
+```
+loopback-address:
+  - 10.7.0.1
+```
+> 之后在每次更新时打开Clash并连接即可
 ## 工作原理
 
 ```
