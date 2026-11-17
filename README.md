@@ -158,7 +158,8 @@ assets/                      # 图标与截图（来自上游）
 - 桥接后的 `version` 与 IPA 的 `CFBundleShortVersionString` 仍然一致；同一版本号重新构建不会触发
   SideStore 的更新提示，要拿到带补丁的构建需要手动重装一次，之后上游发新版本会自动带上；
 - 补丁依赖上游 `ios/Runner/AppDelegate.swift` 与 `ios/CourseWidget/WidgetExtension.swift` 的结构；
-  上游改动导致失配时 CI 会先尝试 fuzz，仍失败则回退为「无桥接」构建并在 Release 说明里标注，不会阻断同步；
+  上游改动导致失配时 CI 会先尝试 fuzz，仍失败则**整个构建直接失败并触发 Actions 失败通知**，
+  此时更新 `patches/widget-bridge.patch` 后重跑即可（不会发布没有桥接的包）；
 - 快照只写入本机 Keychain（`kSecAttrAccessibleAfterFirstUnlock`），不上传；
 - App Store 版本不受影响，仍使用官方 App Group。
 

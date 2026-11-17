@@ -94,8 +94,9 @@ jobs:
           PATCH="$GITHUB_WORKSPACE/patches/widget-bridge.patch"
           cd "$UPSTREAM_DIR"
           # 小组件桥接补丁：App 把 DB 快照写进 Keychain，Widget 扩展从 Keychain 还原，
-          # 用于无法使用 App Group 的侧载环境。上游改动这两个文件时补丁可能失配，
-          # 先尝试 fuzz，仍失败则回滚并降级为「无桥接」构建，绝不阻断同步。
+          # 用于无法使用 App Group 的侧载环境。上游改动这两个文件时补丁可能失配：
+          # 先尝试 fuzz；仍失败则回滚并让整个 workflow 失败（触发 Actions 失败通知，
+          # 便于及时发现并更新补丁），绝不发布没有桥接的包。
           if git apply --verbose "$PATCH" 2>/dev/null; then
             echo "WIDGET_BRIDGE=applied" >> "$GITHUB_ENV"
             echo "widget bridge patch：git apply 成功"
@@ -106,8 +107,8 @@ jobs:
               echo "widget bridge patch：fuzz 应用成功（上游有轻微改动）"
             else
               git checkout -- . && git clean -fd
-              echo "WIDGET_BRIDGE=missing" >> "$GITHUB_ENV"
-              echo "::warning::widget bridge 补丁失配，本次构建不含小组件桥接；请更新 patches/widget-bridge.patch"
+              echo "::error::widget bridge 补丁失配：git apply 与 fuzz 均失败。请更新 patches/widget-bridge.patch 后重跑；本次不发布任何产物。"
+              exit 1
             fi
           fi
 
@@ -192,11 +193,7 @@ jobs:
             echo
             echo "- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。"
             echo "- 版本注入：\`CFBundleShortVersionString=$SRC_BUILD_NAME\`、\`CFBundleVersion=$SRC_BUILD_NUMBER\`（与上游 CI 的版本注入规则一致）。"
-            if [ "${WIDGET_BRIDGE:-}" = "applied" ] || [ "${WIDGET_BRIDGE:-}" = "applied-fuzzy" ]; then
-              echo "- 小组件：已内置 Keychain 桥接补丁。安装时请选 **Keep App Extensions (Use Main Profile)**，装完先打开一次 App 让快照写入，再添加小组件。"
-            else
-              echo "- 小组件：本次构建未包含桥接补丁（上游结构变化导致失配），侧载环境小组件不可用。"
-            fi
+            echo "- 小组件：已内置 Keychain 桥接补丁。安装时请选 **Keep App Extensions (Use Main Profile)**，装完先打开一次 App 让快照写入，再添加小组件。"
             echo
           } > "$NOTES"
           if ! gh api "repos/$UPSTREAM_REPO/releases/tags/$SRC_TAG" --jq '.body' >> "$NOTES" 2>/dev/null; then
