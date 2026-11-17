@@ -161,7 +161,7 @@ jobs:
           set -euo pipefail
           NOTES="$RUNNER_TEMP/release-notes.md"
           {
-            echo "从上游 [\`$UPSTREAM_REPO\`](https://github.com/$UPSTREAM_REPO) 的 tag \`$SRC_TAG\` 源码构建的**未签名 IPA**。"
+            echo "由 GitHub Actions 从上游 [\`$UPSTREAM_REPO\`](https://github.com/$UPSTREAM_REPO) 的 tag \`$SRC_TAG\` 源码构建的**未签名 IPA**，安装时由 SideStore / AltStore 使用你自己的证书重新签名。"
             echo
             echo "- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。"
             echo "- 版本注入：\`CFBundleShortVersionString=$SRC_BUILD_NAME\`、\`CFBundleVersion=$SRC_BUILD_NUMBER\`（与上游 CI 的版本注入规则一致）。"

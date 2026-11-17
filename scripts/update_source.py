@@ -45,10 +45,26 @@ def app_static_fields(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _strip_download_section(text: str) -> str:
+    """去掉上游 Release 正文里的「⬇️ 下载」区块（那是 Android/桌面端链接）。"""
+    kept: list[str] = []
+    skipping = False
+    for line in text.split("\n"):
+        if re.match(r"^##\s", line) and ("下载" in line or "Download" in line):
+            skipping = True
+            continue
+        if skipping and re.match(r"^#{2,3}\s", line):
+            skipping = False
+        if not skipping:
+            kept.append(line)
+    return "\n".join(kept)
+
+
 def clean_notes(raw: str, provenance: str) -> str:
-    """整理 release notes：去掉 HTML 标签、统一换行、限长。"""
+    """整理 release notes：去掉 HTML 标签/下载区块、统一换行、限长。"""
     text = raw.replace("\r\n", "\n").replace("\r", "\n")
     text = _HTML_TAG_RE.sub("", text)
+    text = _strip_download_section(text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if PROVENANCE_PREFIX not in text:
         text = f"{provenance}\n\n{text}".strip()

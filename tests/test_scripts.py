@@ -196,6 +196,18 @@ class UpdateSourceTests(unittest.TestCase):
         long_notes = update_source.clean_notes("x" * 10000, "PROV")
         self.assertLess(len(long_notes), update_source.NOTES_LIMIT + 100)
 
+    def test_clean_notes_strips_upstream_download_section(self) -> None:
+        raw = (
+            "## ⬇️ 下载 (Downloads)\n"
+            "- Android: [apk](https://example.com/a.apk)\n\n"
+            "### Added\n- 新功能\n"
+        )
+        notes = update_source.clean_notes(raw, "PROV")
+        self.assertNotIn("Android", notes)
+        self.assertNotIn("Downloads", notes)
+        self.assertIn("### Added", notes)
+        self.assertIn("新功能", notes)
+
 
 class ValidateTests(unittest.TestCase):
     def _valid_source(self, channel: str = "preview") -> dict:
