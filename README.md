@@ -37,7 +37,7 @@ schedule(每 30 分钟) / manual dispatch
    └─ 查本仓库是否已有该 tag 的 Release 资产
         │  只有需要的渠道才继续
         ▼
-   build-release.yml（macos-15，约 30–50 分钟）
+   build-release.yml（macos-15，约 5–15 分钟；首次拉 Flutter SDK 会更久）
    ├─ 选择 Xcode 26.3（不存在则退回镜像里最新版）
    ├─ git clone --branch <tag> 上游源码
    ├─ flutter 3.44.9 + pub get（沿用上游镜像/回退脚本）/ build_runner / gen-l10n
@@ -127,3 +127,18 @@ assets/                      # 图标与截图（来自上游）
 - 小组件（CourseWidget 扩展）在侧载签名时可能被 SideStore 移除，App 本体不受影响。
 - IPA 未签名、未公证；下载后如校验失败，可在 Release 页面核对文件大小并重新下载。
 - 本仓库只发布 iOS IPA，不镜像 Android APK / Windows / Linux 产物。
+
+## 可用性自检（每次发布前后都会做）
+
+CI 发布前会执行 `scripts/validate_sources.py --check-urls --check-hashes`：结构校验 + 实际下载
+最新 IPA 比对大小与 SHA-256。另外本地还按 SideStore 的模型（`Source` / `StoreApp` /
+`AppVersion` 的必需字段与 `ISO8601DateFormatter` 日期策略）对两份 JSON 做过解码验证，结论：
+
+| 检查项 | 结果 |
+| --- | --- |
+| SideStore 模型解码两份 JSON | 通过 |
+| IPA 大小 / SHA-256 与 JSON 一致 | 通过（preview 与 stable 均已核对） |
+| IPA 内 `CFBundleShortVersionString` 与 JSON `version` 一致 | 通过（`2.6.0-rc3` / `2.6.0`） |
+| IPA 未签名（`codesign -dv` → not signed） | 通过，SideStore 安装时重签 |
+| 图标 / 3 张截图 / IPA 下载地址 HTTP 200 | 通过 |
+| GitHub Pages 镜像 | 通过（`/preview.json`、`/stable.json` 均为最新） |
