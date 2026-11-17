@@ -1,0 +1,272 @@
+name: Build and publish IPA
+
+# 由 sync.yml 调用：从上游 tag 源码构建未签名 IPA，发布到本仓库 Release，
+# 再把版本写回对应渠道的源 JSON 并提交。
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        description: "scripts/plan.py 输出的单渠道计划（JSON 字符串）"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release-${{ fromJSON(inputs.plan).channel }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ fromJSON(inputs.plan).channel }} ${{ fromJSON(inputs.plan).version }}
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      MODE: ${{ fromJSON(inputs.plan).mode }}
+      CHANNEL: ${{ fromJSON(inputs.plan).channel }}
+      TAG: ${{ fromJSON(inputs.plan).tag }}
+      VERSION: ${{ fromJSON(inputs.plan).version }}
+      BUILD_NAME: ${{ fromJSON(inputs.plan).build_name }}
+      BUILD_NUMBER: ${{ fromJSON(inputs.plan).build_number }}
+      UPSTREAM_REPO: ${{ fromJSON(inputs.plan).upstream_repo }}
+      PLAN_ASSET_URL: ${{ fromJSON(inputs.plan).asset_url }}
+      PLAN_ASSET_SIZE: ${{ fromJSON(inputs.plan).asset_size }}
+      PLAN_ASSET_DATE: ${{ fromJSON(inputs.plan).asset_date }}
+      UPSTREAM_DIR: ${{ github.workspace }}/.work/upstream
+      IPA_DIR: ${{ github.workspace }}/.work/ipa
+      PUB_HOSTED_URL: https://pub.flutter-io.cn
+      COCOAPODS_DISABLE_STATS: "true"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          chosen=""
+          for candidate in \
+            /Applications/Xcode_26.3.app \
+            /Applications/Xcode_26.2.app \
+            /Applications/Xcode_26.1.app \
+            /Applications/Xcode_26.0.app; do
+            if [ -d "$candidate/Contents/Developer" ]; then
+              chosen="$candidate"
+              break
+            fi
+          done
+          if [ -z "$chosen" ]; then
+            chosen="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          fi
+          if [ -z "$chosen" ]; then
+            echo "::error::找不到可用的 Xcode"
+            exit 1
+          fi
+          echo "使用 $chosen"
+          sudo xcode-select --switch "$chosen/Contents/Developer"
+          xcodebuild -version
+
+      - name: Clone upstream at tag
+        if: fromJSON(inputs.plan).mode == 'build'
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: |
+          set -euo pipefail
+          rm -rf "$UPSTREAM_DIR"
+          mkdir -p "$(dirname "$UPSTREAM_DIR")"
+          git clone --depth 1 --branch "$TAG" "https://github.com/$UPSTREAM_REPO.git" "$UPSTREAM_DIR"
+          echo "UPSTREAM_COMMIT=$(git -C "$UPSTREAM_DIR" rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Set up Flutter
+        if: fromJSON(inputs.plan).mode == 'build'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.9"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        if: fromJSON(inputs.plan).mode == 'build'
+        shell: bash
+        working-directory: ${{ github.workspace }}/.work/upstream
+        run: python3 .github/scripts/pub_get_with_fallback.py
+
+      - name: Generate code and localizations
+        if: fromJSON(inputs.plan).mode == 'build'
+        shell: bash
+        working-directory: ${{ github.workspace }}/.work/upstream
+        run: |
+          set -uo pipefail
+          # 与上游 .github/actions/setup 保持一致：代码生成失败不阻断，
+          # 真正的编译错误会在 flutter build 阶段暴露。
+          dart run build_runner build --delete-conflicting-outputs || true
+          flutter gen-l10n
+
+      - name: Build unsigned iOS app
+        if: fromJSON(inputs.plan).mode == 'build'
+        shell: bash
+        working-directory: ${{ github.workspace }}/.work/upstream
+        run: |
+          set -euo pipefail
+          META="$(VERSION="$TAG" GITHUB_OUTPUT= python3 .github/scripts/git_meta.py)"
+          GIT_TAG="$(printf '%s\n' "$META" | sed -n 's/^GIT_TAG=//p' | head -n 1)"
+          GIT_COMMIT="$(printf '%s\n' "$META" | sed -n 's/^GIT_COMMIT=//p' | head -n 1)"
+          GIT_COMMIT_DATE="$(printf '%s\n' "$META" | sed -n 's/^GIT_COMMIT_DATE=//p' | head -n 1)"
+          echo "GIT_TAG=$GIT_TAG"
+          echo "GIT_COMMIT=$GIT_COMMIT"
+          echo "GIT_COMMIT_DATE=$GIT_COMMIT_DATE"
+          # 未签名构建：SideStore / AltStore 安装时会用用户自己的证书重签名。
+          flutter build ios --release --no-codesign \
+            --build-name "$BUILD_NAME" \
+            --build-number "$BUILD_NUMBER" \
+            --dart-define=GIT_TAG="$GIT_TAG" \
+            --dart-define=GIT_COMMIT="$GIT_COMMIT" \
+            --dart-define=GIT_COMMIT_DATE="$GIT_COMMIT_DATE"
+
+      - name: Package IPA
+        if: fromJSON(inputs.plan).mode == 'build'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$IPA_DIR"
+          python3 scripts/package_ipa.py \
+            --app "$UPSTREAM_DIR/build/ios/iphoneos/Runner.app" \
+            --out "$IPA_DIR/Bugaoshan-$VERSION.ipa" \
+            --expect-bundle-id io.github.thebrotherhoodofscu.bugaoshan.ios \
+            --expect-short-version "$BUILD_NAME" \
+            --expect-build-number "$BUILD_NUMBER" \
+            | tee "$IPA_DIR/metadata.json"
+          ls -lh "$IPA_DIR"
+
+      - name: Upload IPA artifact
+        if: fromJSON(inputs.plan).mode == 'build'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipa-${{ fromJSON(inputs.plan).version }}
+          path: ${{ github.workspace }}/.work/ipa/Bugaoshan-${{ fromJSON(inputs.plan).version }}.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Compose release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "从上游 [\`$UPSTREAM_REPO\`](https://github.com/$UPSTREAM_REPO) 的 tag \`$TAG\` 源码构建的**未签名 IPA**。"
+            echo
+            echo "- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。"
+            echo "- 版本注入：\`CFBundleShortVersionString=$BUILD_NAME\`、\`CFBundleVersion=$BUILD_NUMBER\`（与上游 CI 的版本注入规则一致）。"
+            echo
+          } > "$NOTES"
+          if ! gh api "repos/$UPSTREAM_REPO/releases/tags/$TAG" --jq '.body' >> "$NOTES" 2>/dev/null; then
+            echo "上游没有该 tag 的 Release 记录（tag 存在但没有发布 Release 或已取消），对应上游提交：" >> "$NOTES"
+            echo >> "$NOTES"
+            if [ -n "${UPSTREAM_COMMIT:-}" ]; then
+              echo "[\`$UPSTREAM_COMMIT\`](https://github.com/$UPSTREAM_REPO/commit/$UPSTREAM_COMMIT)" >> "$NOTES"
+            else
+              echo "[$UPSTREAM_REPO@$TAG](https://github.com/$UPSTREAM_REPO/tree/$TAG)" >> "$NOTES"
+            fi
+          fi
+
+      - name: Publish GitHub release
+        if: fromJSON(inputs.plan).mode == 'build'
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA="$IPA_DIR/Bugaoshan-$VERSION.ipa"
+          TITLE="不高山上 $VERSION"
+          NOTES="$RUNNER_TEMP/release-notes.md"
+          exists=0
+          if gh release view "$TAG" >/dev/null 2>&1; then exists=1; fi
+          if [ "$exists" = "1" ]; then
+            gh release upload "$TAG" "$IPA" --clobber
+            if [ "$CHANNEL" = "preview" ]; then
+              gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES" --prerelease
+            else
+              gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES"
+            fi
+          else
+            if [ "$CHANNEL" = "preview" ]; then
+              gh release create "$TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES" --prerelease
+            else
+              gh release create "$TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES"
+            fi
+          fi
+
+      - name: Update source JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "reuse" ]; then
+            SIZE="$PLAN_ASSET_SIZE"
+            URL="$PLAN_ASSET_URL"
+            DATE="$PLAN_ASSET_DATE"
+            if [ -z "$URL" ] || [ -z "$SIZE" ]; then
+              echo "::error::reuse 模式缺少已有 Release 资产信息"
+              exit 1
+            fi
+          else
+            SIZE="$(stat -f%z "$IPA_DIR/Bugaoshan-$VERSION.ipa")"
+            URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/Bugaoshan-$VERSION.ipa"
+            DATE="$(date -u +%F)"
+          fi
+          if [ -z "$DATE" ]; then DATE="$(date -u +%F)"; fi
+          python3 scripts/update_source.py \
+            --channel "$CHANNEL" \
+            --tag "$TAG" \
+            --size "$SIZE" \
+            --download-url "$URL" \
+            --date "$DATE" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      - name: Validate source JSON
+        shell: bash
+        run: python3 scripts/validate_sources.py --check-urls
+
+      - name: Commit source JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add preview.json stable.json
+          if git diff --cached --quiet; then
+            echo "源 JSON 没有变化，跳过提交"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(source): 同步 $CHANNEL $VERSION"
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push origin HEAD:main; then
+              echo "已推送源 JSON"
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((attempt * 5))
+          done
+          echo "::error::推送源 JSON 失败"
+          exit 1
+
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### 不高山上 $CHANNEL $VERSION"
+            echo
+            echo "| 项目 | 值 |"
+            echo "| --- | --- |"
+            echo "| 动作 | \`$MODE\` |"
+            echo "| 上游 tag | \`$TAG\` |"
+            echo "| 版本注入 | \`$BUILD_NAME ($BUILD_NUMBER)\` |"
+            echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG |"
+            if [ -f "$IPA_DIR/metadata.json" ]; then
+              echo "| IPA 大小 | $(cat "$IPA_DIR/metadata.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["size"])') 字节 |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

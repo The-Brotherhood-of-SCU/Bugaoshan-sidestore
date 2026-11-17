@@ -1,0 +1,110 @@
+name: Sync upstream
+
+# 定时检查上游 Bugaoshan 的 tag：
+#   - preview 渠道：vX.Y.Z-preview / -preview.N / -rcN
+#   - stable  渠道：vX.Y.Z（正式 Release）
+# 有新版本时先解析（ubuntu 上很便宜），只有需要构建时才占用 macOS runner。
+
+on:
+  schedule:
+    # 每 30 分钟一次；GitHub 的 schedule 在整点高峰期可能延迟十几分钟，这是正常的。
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "要同步的渠道"
+        type: choice
+        options: [all, preview, stable]
+        default: all
+      tag:
+        description: "强制构建指定上游 tag（如 v2.6.0-rc3；留空=自动取最新，指定时必须单选渠道）"
+        type: string
+        required: false
+        default: ""
+      force:
+        description: "即使源 JSON 已有该版本也强制重新构建"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Resolve upstream tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      preview_needed: ${{ steps.plan.outputs.preview_needed }}
+      preview_plan: ${{ steps.plan.outputs.preview_plan }}
+      stable_needed: ${{ steps.plan.outputs.stable_needed }}
+      stable_plan: ${{ steps.plan.outputs.stable_plan }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Plan channel syncs
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel || 'all' }}
+          TARGET_TAG: ${{ inputs.tag }}
+          FORCE: ${{ inputs.force && '1' || '0' }}
+        run: python3 scripts/plan.py
+
+  preview:
+    name: Preview IPA
+    needs: plan
+    if: needs.plan.outputs.preview_needed == 'true'
+    uses: ./.github/workflows/build-release.yml
+    with:
+      plan: ${{ needs.plan.outputs.preview_plan }}
+
+  stable:
+    name: Stable IPA
+    needs: plan
+    if: needs.plan.outputs.stable_needed == 'true'
+    uses: ./.github/workflows/build-release.yml
+    with:
+      plan: ${{ needs.plan.outputs.stable_plan }}
+
+  pages:
+    name: Refresh Pages mirror
+    needs: [plan, preview, stable]
+    # 用 GITHUB_TOKEN 提交的 commit 不会触发新的 workflow，所以 Pages 在这里一并刷新。
+    if: always() && (needs.preview.result == 'success' || needs.stable.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Assemble site
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp preview.json stable.json _site/
+          cp -r site/. _site/
+          cp -r assets _site/assets
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

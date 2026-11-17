@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>不高山上 · SideStore / AltStore 软件源</title>
+<style>
+  :root {
+    --red: #991f20;
+    --red-soft: #c04a4b;
+    --ink: #1c1917;
+    --muted: #6b625c;
+    --paper: #faf7f1;
+    --card: #ffffff;
+    --line: #e7e0d6;
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, #f4e6e1 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, #eee7d8 0%, transparent 55%),
+      var(--paper);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 56px 22px 72px; }
+  header.hero { display: flex; gap: 22px; align-items: center; }
+  header.hero img {
+    width: 92px; height: 92px; border-radius: 22px;
+    box-shadow: 0 12px 30px rgba(153, 31, 32, .18);
+  }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.02em; }
+  .sub { color: var(--muted); margin: 0; }
+  .badges { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: #f1e7e2; color: var(--red); border: 1px solid #ead9d2;
+  }
+  .channels { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 38px 0 10px; }
+  @media (max-width: 760px) { .channels { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 24px; box-shadow: 0 10px 34px rgba(28, 25, 23, .05);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .card h2 { font-size: 19px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .tag {
+    font-size: 11px; font-weight: 600; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 6px; background: var(--red); color: #fff;
+  }
+  .tag.ghost { background: #f0ebe3; color: var(--muted); }
+  .desc { color: var(--muted); font-size: 14px; margin: 0; }
+  .meta { font-size: 13px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .meta b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .url {
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #f7f3ec; border: 1px dashed var(--line); border-radius: 10px;
+    padding: 10px 12px; word-break: break-all; color: #57504a;
+  }
+  .buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    appearance: none; border: 0; cursor: pointer; text-decoration: none;
+    border-radius: 11px; padding: 10px 16px; font-size: 14px; font-weight: 600;
+    background: var(--red); color: #fff; transition: transform .12s ease, background .12s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { background: #7f1919; transform: translateY(-1px); }
+  .btn.secondary {
+    background: #f4efe7; color: var(--ink); border: 1px solid var(--line);
+  }
+  .btn.secondary:hover { background: #ece5da; }
+  .copy-state { font-size: 13px; color: var(--red); min-height: 20px; }
+  section.usage {
+    margin-top: 34px; background: rgba(255, 255, 255, .6); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 26px 26px 20px;
+  }
+  section.usage h3 { margin: 0 0 12px; font-size: 17px; }
+  ol { margin: 0; padding-left: 20px; color: #443d38; }
+  ol li { margin: 7px 0; }
+  code {
+    font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #f1ebe2; padding: 1px 6px; border-radius: 5px;
+  }
+  footer { margin-top: 34px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+  footer a { color: var(--red-soft); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); display: inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <img src="assets/icon.png" alt="不高山上 图标" />
+    <div>
+      <h1>不高山上 · SideStore 源</h1>
+      <p class="sub">四川大学校园助手「不高山上」的 iOS 侧载源，由社区 CI 从上游源码自动构建。</p>
+      <div class="badges">
+        <span class="badge">未签名 IPA</span>
+        <span class="badge">SideStore / AltStore</span>
+        <span class="badge">AGPL-3.0</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="channels">
+    <div class="card">
+      <h2>预览版 <span class="tag">Preview</span></h2>
+      <p class="desc">跟随上游 <code>vX.Y.Z-preview</code> / <code>-preview.N</code> / <code>-rcN</code> tag，上游发一个就同步构建一个。</p>
+      <div class="meta" id="preview-meta"><span class="dot"></span> 正在读取源…</div>
+      <div class="url" id="preview-url"></div>
+      <div class="buttons">
+        <a class="btn" id="preview-side" href="#">在 SideStore 中添加</a>
+        <a class="btn secondary" id="preview-alt" href="#">AltStore</a>
+        <button class="btn secondary" data-copy="preview">复制链接</button>
+      </div>
+      <div class="copy-state" id="preview-copy"></div>
+    </div>
+
+    <div class="card">
+      <h2>正式版 <span class="tag ghost">Stable</span></h2>
+      <p class="desc">只跟随上游正式 Release 的 <code>vX.Y.Z</code> tag，与 App Store 版本同源。</p>
+      <div class="meta" id="stable-meta"><span class="dot"></span> 正在读取源…</div>
+      <div class="url" id="stable-url"></div>
+      <div class="buttons">
+        <a class="btn" id="stable-side" href="#">在 SideStore 中添加</a>
+        <a class="btn secondary" id="stable-alt" href="#">AltStore</a>
+        <button class="btn secondary" data-copy="stable">复制链接</button>
+      </div>
+      <div class="copy-state" id="stable-copy"></div>
+    </div>
+  </div>
+
+  <section class="usage">
+    <h3>怎么用</h3>
+    <ol>
+      <li>在 iPhone 上装好 <a href="https://sidestore.io">SideStore</a>（或 AltStore），并完成一次配对 / 登录你自己的 Apple ID。</li>
+      <li>点上面的「在 SideStore 中添加」，或手动打开 SideStore → <code>Sources</code> → <code>+</code>，粘贴 <code>…/preview.json</code> 或 <code>…/stable.json</code>。</li>
+      <li>在源里找到「不高山上」，安装即可；IPA 是未签名的，安装时由 SideStore 用你的证书重新签名。</li>
+      <li>之后源 JSON 会随上游自动更新，SideStore 里会提示新版本。</li>
+    </ol>
+    <p class="desc" style="margin-top:14px">预览版与正式版是两份独立源、同一个 Bundle ID，同一时间只能装其中一个；切换渠道前先卸载旧版本。</p>
+  </section>
+
+  <footer>
+    上游源码：<a href="https://github.com/The-Brotherhood-of-SCU/Bugaoshan">The-Brotherhood-of-SCU/Bugaoshan</a>（AGPL-3.0）；
+    本仓库只做 iOS 未签名包的自动构建与源分发，非官方渠道，正式版请以 App Store 为准。<br />
+    图标与截图来自上游项目，版权归原作者所有。
+  </footer>
+</div>
+
+<script>
+  const BASE = {
+    preview: new URL('preview.json', location.href).href,
+    stable: new URL('stable.json', location.href).href,
+  };
+
+  function formatBytes(bytes) {
+    if (!bytes || Number.isNaN(Number(bytes))) return '—';
+    const value = Number(bytes);
+    if (value >= 1024 * 1024) return (value / 1024 / 1024).toFixed(1) + ' MB';
+    return Math.round(value / 1024) + ' KB';
+  }
+
+  for (const [channel, url] of Object.entries(BASE)) {
+    document.getElementById(channel + '-url').textContent = url;
+    const side = document.getElementById(channel + '-side');
+    side.href = 'sidestore://source?url=' + encodeURIComponent(url);
+    const alt = document.getElementById(channel + '-alt');
+    alt.href = 'altstore://source?url=' + encodeURIComponent(url);
+
+    const meta = document.getElementById(channel + '-meta');
+    fetch(url, { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
+      .then((data) => {
+        const latest = data?.apps?.[0]?.versions?.[0];
+        if (!latest) {
+          meta.innerHTML = '<span class="dot"></span> 源已就绪，等待首次 CI 同步';
+          return;
+        }
+        meta.innerHTML =
+          '<span class="dot"></span> 最新 <b>' + latest.version + '</b>' +
+          '<span>发布于 ' + (latest.date || '—') + '</span>' +
+          '<span>大小 <b>' + formatBytes(latest.size) + '</b></span>';
+      })
+      .catch(() => {
+        meta.innerHTML = '<span class="dot"></span> 暂时无法读取源 JSON';
+      });
+  }
+
+  document.querySelectorAll('[data-copy]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const channel = button.dataset.copy;
+      const url = BASE[channel];
+      const tip = document.getElementById(channel + '-copy');
+      try {
+        await navigator.clipboard.writeText(url);
+        tip.textContent = '已复制源地址';
+      } catch (error) {
+        tip.textContent = '复制失败，请手动选择地址：' + url;
+      }
+      setTimeout(() => { tip.textContent = ''; }, 2600);
+    });
+  });
+</script>
+</body>
+</html>
