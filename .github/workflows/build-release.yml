@@ -24,12 +24,14 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 150
     env:
-      MODE: ${{ fromJSON(inputs.plan).mode }}
-      CHANNEL: ${{ fromJSON(inputs.plan).channel }}
-      TAG: ${{ fromJSON(inputs.plan).tag }}
-      VERSION: ${{ fromJSON(inputs.plan).version }}
-      BUILD_NAME: ${{ fromJSON(inputs.plan).build_name }}
-      BUILD_NUMBER: ${{ fromJSON(inputs.plan).build_number }}
+      # 注意：不要用 CHANNEL / VERSION 这类通用变量名，subosito/flutter-action
+      # 内部也读 CHANNEL/VERSION 环境变量，会覆盖它自己的 setup 参数。
+      SRC_MODE: ${{ fromJSON(inputs.plan).mode }}
+      SRC_CHANNEL: ${{ fromJSON(inputs.plan).channel }}
+      SRC_TAG: ${{ fromJSON(inputs.plan).tag }}
+      SRC_VERSION: ${{ fromJSON(inputs.plan).version }}
+      SRC_BUILD_NAME: ${{ fromJSON(inputs.plan).build_name }}
+      SRC_BUILD_NUMBER: ${{ fromJSON(inputs.plan).build_number }}
       UPSTREAM_REPO: ${{ fromJSON(inputs.plan).upstream_repo }}
       PLAN_ASSET_URL: ${{ fromJSON(inputs.plan).asset_url }}
       PLAN_ASSET_SIZE: ${{ fromJSON(inputs.plan).asset_size }}
@@ -80,7 +82,7 @@ jobs:
           set -euo pipefail
           rm -rf "$UPSTREAM_DIR"
           mkdir -p "$(dirname "$UPSTREAM_DIR")"
-          git clone --depth 1 --branch "$TAG" "https://github.com/$UPSTREAM_REPO.git" "$UPSTREAM_DIR"
+          git clone --depth 1 --branch "$SRC_TAG" "https://github.com/$UPSTREAM_REPO.git" "$UPSTREAM_DIR"
           echo "UPSTREAM_COMMIT=$(git -C "$UPSTREAM_DIR" rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Set up Flutter
@@ -114,7 +116,7 @@ jobs:
         working-directory: ${{ github.workspace }}/.work/upstream
         run: |
           set -euo pipefail
-          META="$(VERSION="$TAG" GITHUB_OUTPUT= python3 .github/scripts/git_meta.py)"
+          META="$(VERSION="$SRC_TAG" GITHUB_OUTPUT= python3 .github/scripts/git_meta.py)"
           GIT_TAG="$(printf '%s\n' "$META" | sed -n 's/^GIT_TAG=//p' | head -n 1)"
           GIT_COMMIT="$(printf '%s\n' "$META" | sed -n 's/^GIT_COMMIT=//p' | head -n 1)"
           GIT_COMMIT_DATE="$(printf '%s\n' "$META" | sed -n 's/^GIT_COMMIT_DATE=//p' | head -n 1)"
@@ -123,8 +125,8 @@ jobs:
           echo "GIT_COMMIT_DATE=$GIT_COMMIT_DATE"
           # 未签名构建：SideStore / AltStore 安装时会用用户自己的证书重签名。
           flutter build ios --release --no-codesign \
-            --build-name "$BUILD_NAME" \
-            --build-number "$BUILD_NUMBER" \
+            --build-name "$SRC_BUILD_NAME" \
+            --build-number "$SRC_BUILD_NUMBER" \
             --dart-define=GIT_TAG="$GIT_TAG" \
             --dart-define=GIT_COMMIT="$GIT_COMMIT" \
             --dart-define=GIT_COMMIT_DATE="$GIT_COMMIT_DATE"
@@ -137,10 +139,10 @@ jobs:
           mkdir -p "$IPA_DIR"
           python3 scripts/package_ipa.py \
             --app "$UPSTREAM_DIR/build/ios/iphoneos/Runner.app" \
-            --out "$IPA_DIR/Bugaoshan-$VERSION.ipa" \
+            --out "$IPA_DIR/Bugaoshan-$SRC_VERSION.ipa" \
             --expect-bundle-id io.github.thebrotherhoodofscu.bugaoshan.ios \
-            --expect-short-version "$BUILD_NAME" \
-            --expect-build-number "$BUILD_NUMBER" \
+            --expect-short-version "$SRC_BUILD_NAME" \
+            --expect-build-number "$SRC_BUILD_NUMBER" \
             | tee "$IPA_DIR/metadata.json"
           ls -lh "$IPA_DIR"
 
@@ -159,19 +161,19 @@ jobs:
           set -euo pipefail
           NOTES="$RUNNER_TEMP/release-notes.md"
           {
-            echo "从上游 [\`$UPSTREAM_REPO\`](https://github.com/$UPSTREAM_REPO) 的 tag \`$TAG\` 源码构建的**未签名 IPA**。"
+            echo "从上游 [\`$UPSTREAM_REPO\`](https://github.com/$UPSTREAM_REPO) 的 tag \`$SRC_TAG\` 源码构建的**未签名 IPA**。"
             echo
             echo "- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。"
-            echo "- 版本注入：\`CFBundleShortVersionString=$BUILD_NAME\`、\`CFBundleVersion=$BUILD_NUMBER\`（与上游 CI 的版本注入规则一致）。"
+            echo "- 版本注入：\`CFBundleShortVersionString=$SRC_BUILD_NAME\`、\`CFBundleVersion=$SRC_BUILD_NUMBER\`（与上游 CI 的版本注入规则一致）。"
             echo
           } > "$NOTES"
-          if ! gh api "repos/$UPSTREAM_REPO/releases/tags/$TAG" --jq '.body' >> "$NOTES" 2>/dev/null; then
+          if ! gh api "repos/$UPSTREAM_REPO/releases/tags/$SRC_TAG" --jq '.body' >> "$NOTES" 2>/dev/null; then
             echo "上游没有该 tag 的 Release 记录（tag 存在但没有发布 Release 或已取消），对应上游提交：" >> "$NOTES"
             echo >> "$NOTES"
             if [ -n "${UPSTREAM_COMMIT:-}" ]; then
               echo "[\`$UPSTREAM_COMMIT\`](https://github.com/$UPSTREAM_REPO/commit/$UPSTREAM_COMMIT)" >> "$NOTES"
             else
-              echo "[$UPSTREAM_REPO@$TAG](https://github.com/$UPSTREAM_REPO/tree/$TAG)" >> "$NOTES"
+              echo "[$UPSTREAM_REPO@$SRC_TAG](https://github.com/$UPSTREAM_REPO/tree/$SRC_TAG)" >> "$NOTES"
             fi
           fi
 
@@ -180,23 +182,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          IPA="$IPA_DIR/Bugaoshan-$VERSION.ipa"
-          TITLE="不高山上 $VERSION"
+          IPA="$IPA_DIR/Bugaoshan-$SRC_VERSION.ipa"
+          TITLE="不高山上 $SRC_VERSION"
           NOTES="$RUNNER_TEMP/release-notes.md"
           exists=0
-          if gh release view "$TAG" >/dev/null 2>&1; then exists=1; fi
+          if gh release view "$SRC_TAG" >/dev/null 2>&1; then exists=1; fi
           if [ "$exists" = "1" ]; then
-            gh release upload "$TAG" "$IPA" --clobber
-            if [ "$CHANNEL" = "preview" ]; then
-              gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES" --prerelease
+            gh release upload "$SRC_TAG" "$IPA" --clobber
+            if [ "$SRC_CHANNEL" = "preview" ]; then
+              gh release edit "$SRC_TAG" --title "$TITLE" --notes-file "$NOTES" --prerelease
             else
-              gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES"
+              gh release edit "$SRC_TAG" --title "$TITLE" --notes-file "$NOTES"
             fi
           else
-            if [ "$CHANNEL" = "preview" ]; then
-              gh release create "$TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES" --prerelease
+            if [ "$SRC_CHANNEL" = "preview" ]; then
+              gh release create "$SRC_TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES" --prerelease
             else
-              gh release create "$TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES"
+              gh release create "$SRC_TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES"
             fi
           fi
 
@@ -204,7 +206,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$MODE" = "reuse" ]; then
+          if [ "$SRC_MODE" = "reuse" ]; then
             SIZE="$PLAN_ASSET_SIZE"
             URL="$PLAN_ASSET_URL"
             DATE="$PLAN_ASSET_DATE"
@@ -213,14 +215,14 @@ jobs:
               exit 1
             fi
           else
-            SIZE="$(stat -f%z "$IPA_DIR/Bugaoshan-$VERSION.ipa")"
-            URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/Bugaoshan-$VERSION.ipa"
+            SIZE="$(stat -f%z "$IPA_DIR/Bugaoshan-$SRC_VERSION.ipa")"
+            URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$SRC_TAG/Bugaoshan-$SRC_VERSION.ipa"
             DATE="$(date -u +%F)"
           fi
           if [ -z "$DATE" ]; then DATE="$(date -u +%F)"; fi
           python3 scripts/update_source.py \
-            --channel "$CHANNEL" \
-            --tag "$TAG" \
+            --channel "$SRC_CHANNEL" \
+            --tag "$SRC_TAG" \
             --size "$SIZE" \
             --download-url "$URL" \
             --date "$DATE" \
@@ -241,7 +243,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(source): 同步 $CHANNEL $VERSION"
+          git commit -m "chore(source): 同步 $SRC_CHANNEL $SRC_VERSION"
           for attempt in 1 2 3 4 5; do
             if git pull --rebase --autostash origin main && git push origin HEAD:main; then
               echo "已推送源 JSON"
@@ -258,14 +260,14 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### 不高山上 $CHANNEL $VERSION"
+            echo "### 不高山上 $SRC_CHANNEL $SRC_VERSION"
             echo
             echo "| 项目 | 值 |"
             echo "| --- | --- |"
-            echo "| 动作 | \`$MODE\` |"
-            echo "| 上游 tag | \`$TAG\` |"
-            echo "| 版本注入 | \`$BUILD_NAME ($BUILD_NUMBER)\` |"
-            echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG |"
+            echo "| 动作 | \`$SRC_MODE\` |"
+            echo "| 上游 tag | \`$SRC_TAG\` |"
+            echo "| 版本注入 | \`$SRC_BUILD_NAME ($SRC_BUILD_NUMBER)\` |"
+            echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$SRC_TAG |"
             if [ -f "$IPA_DIR/metadata.json" ]; then
               echo "| IPA 大小 | $(cat "$IPA_DIR/metadata.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["size"])') 字节 |"
             fi
