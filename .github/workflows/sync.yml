@@ -8,7 +8,7 @@ name: Sync upstream
 on:
   schedule:
     # 每 30 分钟一次；GitHub 的 schedule 在整点高峰期可能延迟十几分钟，这是正常的。
-    - cron: "7,37 * * * *"
+    - cron: "0,30 * * * *"
   workflow_dispatch:
     inputs:
       channel:
