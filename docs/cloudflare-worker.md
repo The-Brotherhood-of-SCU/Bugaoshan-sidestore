@@ -264,7 +264,7 @@ async function debugInfo(env) {
 }
 
 export default {
-  // Cloudflare Cron Trigger 每 5 分钟调用一次（不需要密码）
+  // Cloudflare Cron Trigger 调用（频率以你自己的配置为准，例如每分钟；不需要密码）
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
       checkUpstream(env).then(async (result) => {
