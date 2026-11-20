@@ -150,7 +150,7 @@ index ec9595a..166b39d 100644
              isOnVacation: false
          )
 diff --git a/ios/Runner/AppDelegate.swift b/ios/Runner/AppDelegate.swift
-index bceff92..10d54cc 100644
+index 90b71eb..bde9c7f 100644
 --- a/ios/Runner/AppDelegate.swift
 +++ b/ios/Runner/AppDelegate.swift
 @@ -1,6 +1,7 @@
@@ -161,22 +161,36 @@ index bceff92..10d54cc 100644
  import UIKit
  import WidgetKit
  
-@@ -10,6 +11,8 @@ import WidgetKit
+@@ -10,6 +11,9 @@ import WidgetKit
      private let calendarEventIdentifierMapKey = "bugaoshan.calendarEventIdentifiers"
      private let eventStore = EKEventStore()
      private let appGroupId = "group.io.github.thebrotherhoodofscu.bugaoshan.ios"
 +    // 侧载救援通道：App 与 Widget 扩展无法共享 App Group 时，用 Keychain 传递快照。
 +    private let widgetKeychainService = "io.github.thebrotherhoodofscu.bugaoshan.widget"
++    private var widgetBridgeObserversInstalled = false
      private let reminderChannel = ReminderChannel()
      private let liveActivityChannel = LiveActivityChannel()
  
-@@ -21,6 +24,24 @@ import WidgetKit
-         // 并把回调分发给注册过生命周期代理的插件，但没有任何插件会为本地提醒调
-         // willPresent。没有这一步，用户正在用 App 时提醒会静默丢弃。
-         UNUserNotificationCenter.current().delegate = self
+@@ -116,10 +120,108 @@ import WidgetKit
+     }
+ 
+     private func updateWidget(result: @escaping FlutterResult) {
++        installWidgetBridgeObservers()
++        syncWidgetSnapshot()
+         WidgetCenter.shared.reloadAllTimelines()
+         result(nil)
+     }
+ 
++    // MARK: - Widget bridge（Keychain 快照）
 +
-+        // widget bridge：进入后台 / 退到后台时把数据库快照写进 Keychain，
-+        // 供无法使用 App Group 的侧载环境下的 Widget 扩展读取。
++    @objc private func handleWidgetBridgeLifecycle() {
++        syncWidgetSnapshot()
++    }
++
++    /// 首次 updateWidget 时安装生命周期监听，避免改动 didFinishLaunching（上游常改那里）。
++    private func installWidgetBridgeObservers() {
++        guard !widgetBridgeObserversInstalled else { return }
++        widgetBridgeObserversInstalled = true
 +        NotificationCenter.default.addObserver(
 +            self,
 +            selector: #selector(handleWidgetBridgeLifecycle),
@@ -189,25 +203,6 @@ index bceff92..10d54cc 100644
 +            name: UIApplication.willResignActiveNotification,
 +            object: nil
 +        )
-+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-+            self?.syncWidgetSnapshot()
-+        }
-         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-     }
- 
-@@ -113,10 +134,89 @@ import WidgetKit
-     }
- 
-     private func updateWidget(result: @escaping FlutterResult) {
-+        syncWidgetSnapshot()
-         WidgetCenter.shared.reloadAllTimelines()
-         result(nil)
-     }
- 
-+    // MARK: - Widget bridge（Keychain 快照）
-+
-+    @objc private func handleWidgetBridgeLifecycle() {
-+        syncWidgetSnapshot()
 +    }
 +
 +    /// App 数据库所在位置：优先 App Group，侧载无 App Group 时退回 Application Support。
@@ -285,7 +280,7 @@ index bceff92..10d54cc 100644
      private func syncWidgetShowTomorrow(value: Bool, result: @escaping FlutterResult) {
          guard let sharedDefaults = UserDefaults(suiteName: appGroupId) else {
              result(FlutterError(
-@@ -139,16 +239,10 @@ import WidgetKit
+@@ -142,16 +244,10 @@ import WidgetKit
          density: Int,
          result: @escaping FlutterResult
      ) {
