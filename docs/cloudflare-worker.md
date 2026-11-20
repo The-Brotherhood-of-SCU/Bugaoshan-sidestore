@@ -181,7 +181,12 @@ async function checkUpstream(env, { force = false } = {}) {
     };
   }
 
-  await env.SYNC_STATE.put("last_tag", latest);
+  try {
+    await env.SYNC_STATE.put("last_tag", latest);
+  } catch (error) {
+    // 写失败也不能让检查整体抛错，否则下一分钟会重复 dispatch
+    console.log("[last_tag]", String(error));
+  }
   return { ok: true, latest, last, dispatched: true };
 }
 
@@ -190,6 +195,18 @@ async function recordStatus(env, result) {
     return;
   }
   try {
+    const now = Date.now();
+    const raw = await env.SYNC_STATE.get("last_check");
+    const previous = raw ? JSON.parse(raw) : null;
+    const lastAt = previous && previous.at ? Date.parse(previous.at) : 0;
+    const important = result.dispatched === true || result.ok !== true;
+
+    // 每分钟检查时，普通结果最多 15 分钟写一次，避免打满免费版 KV 写入额度（1,000/天）；
+    // dispatch 和失败立即写，方便排查。
+    if (!important && now - lastAt < 15 * 60 * 1000) {
+      return;
+    }
+
     await env.SYNC_STATE.put(
       "last_check",
       JSON.stringify({ at: new Date().toISOString(), ...result }),
@@ -318,8 +335,9 @@ gh run list --limit 3 --json event,displayTitle,status --jq '.[] | "\(.event) \(
 
 ## 7. 注意事项
 
-- 免费计划包含 Cron Triggers（1 分钟粒度，额度以 Cloudflare 控制台为准）；
-  `*/5` 一天约 288 次，远低于免费额度。
+- 免费计划包含 Cron Triggers（1 分钟粒度，额度以 Cloudflare 控制台为准）。注意免费版
+  KV 写入额度是 **1,000/天**：代码里的 `recordStatus` 对普通结果做了 15 分钟节流，
+  dispatch / 失败才立即写，因此即使 `* * * * *` 每分钟检查，写入也远低于额度。
 - KV 读取有最终一致性（约 60 秒），5 分钟粒度下不会重复触发；即使重复也无害——
   Actions 的 plan 会发现没有新版本而跳过，且有 `concurrency: sync-upstream` 串行保护。
 - Worker 只读取公开的 Atom feed，并调用我们仓库的 dispatch API；不接触任何用户数据。
