@@ -53,32 +53,102 @@ crons = ["*/5 * * * *"]
 ## 4. `src/index.js`
 
 ```js
+// bugaoshan-sync：监听上游 tag，发现变化就触发 GitHub Actions（repository_dispatch）
+// /check 与 /debug 需要密码：请求头 Authorization: Bearer <key> 或 ?key=<key>
 const DISPATCH_EVENT = "upstream-tag";
 
 function latestTagFromAtom(xml) {
-  // tags.atom 的第一条 entry 就是最新 tag；从 /releases/tag/<tag> 里取
   const entry = xml.split("<entry>")[1] ?? "";
   const match = entry.match(/\/releases\/tag\/([^"<]+)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function buildFeedUrl(env) {
+  return `https://github.com/${env.UPSTREAM_REPO}/tags.atom`;
+}
+
+function secureEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+function providedKey(request) {
+  const header = request.headers.get("Authorization") ?? "";
+  const bearer = header.replace(/^Bearer\s+/i, "").trim();
+  const explicit = (request.headers.get("X-Endpoint-Key") ?? "").trim();
+  const query = (new URL(request.url).searchParams.get("key") ?? "").trim();
+  return bearer || explicit || query;
+}
+
+function authorized(request, env) {
+  const expected = env.ENDPOINT_KEY;
+  if (!expected) {
+    return false;
+  }
+  return secureEqual(providedKey(request), expected);
+}
+
+function unauthorizedResponse(env) {
+  const error = env.ENDPOINT_KEY
+    ? "unauthorized"
+    : "ENDPOINT_KEY secret is not set; endpoints are disabled";
+  return Response.json(
+    { ok: false, error },
+    { status: 401, headers: { "WWW-Authenticate": "Bearer" } },
+  );
+}
+
 async function checkUpstream(env, { force = false } = {}) {
-  const feed = await fetch(`https://github.com/${env.UPSTREAM_REPO}/tags.atom`, {
-    headers: { "User-Agent": "bugaoshan-sync-worker" },
-    cf: { cacheTtl: 60 },
-  });
+  const url = buildFeedUrl(env);
+
+  if (!env.UPSTREAM_REPO) {
+    return { ok: false, step: "config", message: "UPSTREAM_REPO 未设置", url };
+  }
+  if (!env.SYNC_STATE) {
+    return { ok: false, step: "config", message: "KV binding SYNC_STATE 未绑上" };
+  }
+
+  let feed;
+  try {
+    feed = await fetch(url, {
+      headers: { "User-Agent": "bugaoshan-sync-worker" },
+      cf: { cacheTtl: 60 },
+    });
+  } catch (error) {
+    return { ok: false, step: "feed", url, message: String(error) };
+  }
+
   if (!feed.ok) {
-    return { ok: false, step: "feed", status: feed.status };
+    return {
+      ok: false,
+      step: "feed",
+      status: feed.status,
+      url,
+      upstreamRepo: env.UPSTREAM_REPO ?? null,
+    };
   }
 
   const latest = latestTagFromAtom(await feed.text());
   if (!latest) {
-    return { ok: false, step: "parse" };
+    return { ok: false, step: "parse", url };
   }
 
   const last = await env.SYNC_STATE.get("last_tag");
   if (!force && last === latest) {
     return { ok: true, latest, last, dispatched: false };
+  }
+
+  if (!env.OUR_REPO) {
+    return { ok: false, step: "dispatch", message: "OUR_REPO 未设置", latest, last };
+  }
+  if (!env.GITHUB_TOKEN) {
+    return { ok: false, step: "dispatch", message: "GITHUB_TOKEN 未设置", latest, last };
   }
 
   const response = await fetch(
@@ -94,7 +164,7 @@ async function checkUpstream(env, { force = false } = {}) {
       },
       body: JSON.stringify({
         event_type: DISPATCH_EVENT,
-        client_payload: { tag: latest },
+        client_payload: { tag: latest, source: "cloudflare-worker" },
       }),
     },
   );
@@ -107,6 +177,7 @@ async function checkUpstream(env, { force = false } = {}) {
       body: await response.text(),
       latest,
       last,
+      ourRepo: env.OUR_REPO,
     };
   }
 
@@ -114,20 +185,102 @@ async function checkUpstream(env, { force = false } = {}) {
   return { ok: true, latest, last, dispatched: true };
 }
 
+async function recordStatus(env, result) {
+  if (!env.SYNC_STATE) {
+    return;
+  }
+  try {
+    await env.SYNC_STATE.put(
+      "last_check",
+      JSON.stringify({ at: new Date().toISOString(), ...result }),
+      { expirationTtl: 7 * 24 * 3600 },
+    );
+  } catch (error) {
+    console.log("[recordStatus]", String(error));
+  }
+}
+
+async function debugInfo(env) {
+  const info = {
+    now: new Date().toISOString(),
+    upstreamRepo: env.UPSTREAM_REPO ?? null,
+    ourRepo: env.OUR_REPO ?? null,
+    hasToken: Boolean(env.GITHUB_TOKEN),
+    hasEndpointKey: Boolean(env.ENDPOINT_KEY),
+    hasKV: Boolean(env.SYNC_STATE),
+    feedUrl: buildFeedUrl(env),
+    feedStatus: null,
+    parsedLatestTag: null,
+    lastTagInKV: null,
+    lastCheck: null,
+    feedError: null,
+    kvError: null,
+  };
+
+  if (!env.UPSTREAM_REPO) {
+    return info;
+  }
+
+  try {
+    const feed = await fetch(info.feedUrl, {
+      headers: { "User-Agent": "bugaoshan-sync-worker" },
+    });
+    info.feedStatus = feed.status;
+    if (feed.ok) {
+      info.parsedLatestTag = latestTagFromAtom(await feed.text());
+    }
+  } catch (error) {
+    info.feedError = String(error);
+  }
+
+  if (env.SYNC_STATE) {
+    try {
+      info.lastTagInKV = await env.SYNC_STATE.get("last_tag");
+      const raw = await env.SYNC_STATE.get("last_check");
+      info.lastCheck = raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      info.kvError = String(error);
+    }
+  }
+
+  return info;
+}
+
 export default {
+  // Cloudflare Cron Trigger 每 5 分钟调用一次（不需要密码）
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(checkUpstream(env));
+    ctx.waitUntil(
+      checkUpstream(env).then(async (result) => {
+        console.log("[check]", JSON.stringify(result));
+        await recordStatus(env, result);
+      }),
+    );
   },
 
-  // 手动测试：GET /check（?force=1 强制再触发一次）
   async fetch(request, env) {
     const url = new URL(request.url);
+    const isProtected = url.pathname === "/check" || url.pathname === "/debug";
+
+    if (isProtected && !authorized(request, env)) {
+      return unauthorizedResponse(env);
+    }
+
+    if (url.pathname === "/debug") {
+      return Response.json(await debugInfo(env));
+    }
+
     if (url.pathname === "/check") {
       const force = url.searchParams.get("force") === "1";
       const result = await checkUpstream(env, { force });
+      console.log("[check]", JSON.stringify(result));
+      await recordStatus(env, result);
       return Response.json(result, { status: result.ok ? 200 : 500 });
     }
-    return new Response("bugaoshan sync worker: GET /check", { status: 200 });
+
+    return new Response(
+      "bugaoshan sync worker\n\nGET /check?key=...&force=1\nGET /debug?key=...\n",
+      { status: 200 },
+    );
   },
 };
 ```
@@ -136,8 +289,12 @@ export default {
 
 ```bash
 npx wrangler secret put GITHUB_TOKEN   # 粘贴第 1 步的 PAT
+npx wrangler secret put ENDPOINT_KEY   # 随便生成一串长随机值，/check 与 /debug 的访问密码
 npx wrangler deploy
 ```
+
+`ENDPOINT_KEY` 用来保护 `/check` 和 `/debug`（cron 内部调用不需要）。生成方式例如
+`openssl rand -hex 24`；不设置它时两个端点会返回 401 并提示 secret 未配置。
 
 部署输出里会有 Worker URL，形如
 `https://bugaoshan-sync.<你的子域>.workers.dev`。
@@ -145,8 +302,13 @@ npx wrangler deploy
 ## 6. 验证
 
 ```bash
-curl -s https://bugaoshan-sync.<子域>.workers.dev/check | jq
+# 必须带密码：推荐 Authorization 头，避免 key 出现在 URL/日志里
+curl -s -H "Authorization: Bearer <ENDPOINT_KEY>" \
+  https://bugaoshan-sync.<子域>.workers.dev/check | jq
 # {"ok":true,"latest":"v2.6.1-preview.6","last":null,"dispatched":true}
+
+# 浏览器调试也可以用查询参数
+open "https://bugaoshan-sync.<子域>.workers.dev/debug?key=<ENDPOINT_KEY>"
 
 # 再看 Actions 是否被触发（event 应为 repository_dispatch）
 gh run list --limit 3 --json event,displayTitle,status --jq '.[] | "\(.event) \(.displayTitle) \(.status)"'
@@ -162,6 +324,7 @@ gh run list --limit 3 --json event,displayTitle,status --jq '.[] | "\(.event) \(
   Actions 的 plan 会发现没有新版本而跳过，且有 `concurrency: sync-upstream` 串行保护。
 - Worker 只读取公开的 Atom feed，并调用我们仓库的 dispatch API；不接触任何用户数据。
 - PAT 只放在 Worker Secret 里，不要提交进仓库；建议 90 天轮换一次。
+- `ENDPOINT_KEY` 泄露后重新 `secret put` 覆盖即可；查询参数 `?key=` 会进 URL 和日志，优先用 Authorization 头。
 - 想暂停自动化：Cloudflare 控制台删掉 Cron Trigger（或删 Worker）；Actions 侧还有低频 cron 兜底。
 
 ## 8. 排错
