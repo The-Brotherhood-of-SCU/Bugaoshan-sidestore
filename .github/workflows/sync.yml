@@ -7,8 +7,11 @@ name: Sync upstream
 
 on:
   schedule:
-    # 每 30 分钟一次；GitHub 的 schedule 在整点高峰期可能延迟十几分钟，这是正常的。
+    # 兜底：GitHub 的 schedule 只是尽力而为，实测会漂到几小时一次。
+    # 主触发改为外部 Cloudflare Worker 调 repository_dispatch（见 docs/cloudflare-worker.md）。
     - cron: "0,30 * * * *"
+  repository_dispatch:
+    types: [upstream-tag]
   workflow_dispatch:
     inputs:
       channel:
