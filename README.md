@@ -77,8 +77,12 @@ schedule(每 30 分钟) / manual dispatch
   `Info.plist`，保证与源 JSON 完全一致。
 - **完整性**：源 JSON 的每个版本都带 IPA 的 `sha256`，SideStore 默认会校验下载内容；
   CI 在提交前会实际下载已发布的 IPA 复核大小与哈希。
-- **构建环境**：Flutter `3.44.9`、`PUB_HOSTED_URL=https://pub.flutter-io.cn`、
-  `dart run build_runner`、`flutter gen-l10n`，与上游 CI 的步骤相同。
+- **构建环境**：`PUB_HOSTED_URL=https://pub.flutter-io.cn`、`dart run build_runner`、
+  `flutter gen-l10n`，与上游 CI 的步骤相同。
+- **Flutter 版本不写死**：每次构建都从**被构建的那个 tag** 里读取上游 pin 的版本
+  （`.github/actions/setup/action.yml` → 任意 `.github/workflows/*.yml` 的 `flutter-version`
+  → `.metadata` revision 映射），解析不到才回退默认值并在 Job Summary 里标注；
+  临时钉版本可以设置仓库变量 `FLUTTER_VERSION`。
 - **未签名**：产物没有签名、没有描述文件，安装时由 SideStore / AltStore 使用
   你自己的证书重签名；App Group、小组件扩展等由 SideStore 在签名流程里按你的
   证书能力处理（可能提示移除扩展）。

@@ -73,10 +73,18 @@ jobs:
           set -euo pipefail
           git -C "$UPSTREAM_DIR" apply --verbose "$GITHUB_WORKSPACE/patches/widget-bridge.patch"
 
+      - name: Detect Flutter version
+        id: flutter
+        shell: bash
+        run: |
+          python3 scripts/detect_flutter_version.py \
+            --upstream-dir "$UPSTREAM_DIR" \
+            --override "${{ vars.FLUTTER_VERSION }}"
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.9"
+          flutter-version: ${{ steps.flutter.outputs.flutter_version }}
           channel: stable
           cache: true
 
@@ -160,5 +168,6 @@ jobs:
             echo "### Widget bridge ${VERSION} 实验版"
             echo
             echo "- 上游 tag: \`${{ inputs.tag }}\`"
+            echo "- Flutter: \`${FLUTTER_VERSION:-unknown}\`（${FLUTTER_SOURCE:-unknown}）"
             echo "- Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/widgetbridge-$VERSION"
           } >> "$GITHUB_STEP_SUMMARY"

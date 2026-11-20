@@ -112,11 +112,22 @@ jobs:
             fi
           fi
 
+      - name: Detect Flutter version
+        id: flutter
+        if: fromJSON(inputs.plan).mode == 'build'
+        shell: bash
+        # 从被构建的 tag 源码里取上游 pin 的 Flutter 版本（setup action → workflows →
+        # .metadata revision），仓库变量 FLUTTER_VERSION 可临时覆盖。默认不联网。
+        run: |
+          python3 scripts/detect_flutter_version.py \
+            --upstream-dir "$UPSTREAM_DIR" \
+            --override "${{ vars.FLUTTER_VERSION }}"
+
       - name: Set up Flutter
         if: fromJSON(inputs.plan).mode == 'build'
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.9"
+          flutter-version: ${{ steps.flutter.outputs.flutter_version }}
           channel: stable
           cache: true
 
@@ -193,6 +204,7 @@ jobs:
             echo
             echo "- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。"
             echo "- 版本注入：\`CFBundleShortVersionString=$SRC_BUILD_NAME\`、\`CFBundleVersion=$SRC_BUILD_NUMBER\`（与上游 CI 的版本注入规则一致）。"
+            echo "- 构建工具链：Flutter \`${FLUTTER_VERSION:-unknown}\`（来源 \`${FLUTTER_SOURCE:-unknown}\`）。"
             echo "- 小组件：已内置 Keychain 桥接补丁。安装时请选 **Keep App Extensions (Use Main Profile)**，装完先打开一次 App 让快照写入，再添加小组件。"
             echo
           } > "$NOTES"
@@ -307,6 +319,7 @@ jobs:
             echo "| 上游 tag | \`$SRC_TAG\` |"
             echo "| 版本注入 | \`$SRC_BUILD_NAME ($SRC_BUILD_NUMBER)\` |"
             echo "| 小组件桥接 | \`${WIDGET_BRIDGE:-unknown}\` |"
+            echo "| Flutter | \`${FLUTTER_VERSION:-unknown}\`（${FLUTTER_SOURCE:-unknown}） |"
             echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$SRC_TAG |"
             if [ -f "$IPA_DIR/metadata.json" ]; then
               echo "| IPA 大小 | $(cat "$IPA_DIR/metadata.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["size"])') 字节 |"

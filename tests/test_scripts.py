@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import common  # noqa: E402
+import detect_flutter_version  # noqa: E402
 import make_mirror  # noqa: E402
 import package_ipa  # noqa: E402
 import plan as plan_module  # noqa: E402
@@ -318,6 +319,94 @@ class ValidateTests(unittest.TestCase):
         data["identifier"] = CONFIG["channels"]["preview"]["sourceIdentifier"]
         errors, _ = validate_sources.validate_source("preview", data, CONFIG, repo="o/r")
         self.assertTrue(any("不属于 preview" in error for error in errors))
+
+
+class FlutterVersionTests(unittest.TestCase):
+    def _upstream(self, root: Path, *, pin: str = "", workflow_pin: str = "", revision: str = "") -> Path:
+        if pin:
+            action = root / ".github" / "actions" / "setup" / "action.yml"
+            action.parent.mkdir(parents=True, exist_ok=True)
+            action.write_text(f'runs:\n  steps:\n    - with:\n        flutter-version: "{pin}"\n')
+        if workflow_pin:
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True, exist_ok=True)
+            (workflows / "build.yml").write_text(
+                f"          flutter-version: '{workflow_pin}'\n"
+            )
+        if revision:
+            (root / ".metadata").write_text(
+                "version:\n"
+                f'  revision: "{revision}"\n'
+                '  channel: "stable"\n'
+            )
+        return root
+
+    def _manifest(self, revision: str, version: str) -> dict:
+        return {"releases": [{"hash": revision, "version": version, "channel": "stable"}]}
+
+    def test_setup_action_pin_wins(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = self._upstream(Path(temp), pin="3.44.9", workflow_pin="3.47.0")
+            result = detect_flutter_version.detect(root, manifest_fetcher=lambda: None)
+            self.assertEqual(result["version"], "3.44.9")
+            self.assertTrue(result["source"].endswith("action.yml"))
+
+    def test_workflow_pin_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = self._upstream(Path(temp), workflow_pin="3.47.1")
+            result = detect_flutter_version.detect(root, manifest_fetcher=lambda: None)
+            self.assertEqual(result["version"], "3.47.1")
+            self.assertTrue(result["source"].endswith("build.yml"))
+
+    def test_override_wins(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = self._upstream(Path(temp), pin="3.44.9")
+            result = detect_flutter_version.detect(
+                root, override="3.50.0", manifest_fetcher=lambda: None
+            )
+            self.assertEqual((result["version"], result["source"]), ("3.50.0", "override"))
+
+    def test_metadata_revision_mapping(self) -> None:
+        revision = "f6ff1529fd6d8af5f706051d9251ac9231c83407"
+        with tempfile.TemporaryDirectory() as temp:
+            root = self._upstream(Path(temp), revision=revision)
+            result = detect_flutter_version.detect(
+                root, manifest_fetcher=lambda: self._manifest(revision, "3.44.9")
+            )
+            self.assertEqual(result["version"], "3.44.9")
+            self.assertEqual(result["source"], ".metadata revision")
+
+    def test_default_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            result = detect_flutter_version.detect(root, manifest_fetcher=lambda: None)
+            self.assertEqual((result["version"], result["source"]), (detect_flutter_version.DEFAULT_VERSION, "default"))
+
+    def test_drift_detection(self) -> None:
+        revision = "f6ff1529fd6d8af5f706051d9251ac9231c83407"
+        with tempfile.TemporaryDirectory() as temp:
+            root = self._upstream(Path(temp), pin="3.44.9", revision=revision)
+            drift = detect_flutter_version.detect(
+                root,
+                check_drift=True,
+                manifest_fetcher=lambda: self._manifest(revision, "3.47.0"),
+            )
+            self.assertEqual(drift["version"], "3.44.9")
+            self.assertEqual(drift["drift"], "true")
+
+            same = detect_flutter_version.detect(
+                root,
+                check_drift=True,
+                manifest_fetcher=lambda: self._manifest(revision, "3.44.9"),
+            )
+            self.assertEqual(same["drift"], "false")
+
+    def test_version_prefix_match(self) -> None:
+        manifest = {"releases": [{"hash": "f6ff1529fd6d8af5", "version": "3.44.9"}]}
+        self.assertEqual(
+            detect_flutter_version.version_for_revision(manifest, "f6ff1529"), "3.44.9"
+        )
+        self.assertIsNone(detect_flutter_version.version_for_revision(manifest, "deadbeef"))
 
 
 class MirrorTests(unittest.TestCase):
