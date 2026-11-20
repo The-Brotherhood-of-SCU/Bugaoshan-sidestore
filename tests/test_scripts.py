@@ -401,6 +401,28 @@ class FlutterVersionTests(unittest.TestCase):
             )
             self.assertEqual(same["drift"], "false")
 
+    def test_fail_on_default(self) -> None:
+        import contextlib
+        import io
+
+        with tempfile.TemporaryDirectory() as temp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = detect_flutter_version.main(
+                    ["--upstream-dir", temp, "--fail-on-default"]
+                )
+            self.assertEqual(code, 1)
+
+    def test_invalid_override_rejected(self) -> None:
+        import contextlib
+        import io
+
+        with tempfile.TemporaryDirectory() as temp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = detect_flutter_version.main(
+                    ["--upstream-dir", temp, "--override", "latest"]
+                )
+            self.assertEqual(code, 1)
+
     def test_version_prefix_match(self) -> None:
         manifest = {"releases": [{"hash": "f6ff1529fd6d8af5", "version": "3.44.9"}]}
         self.assertEqual(

@@ -8,7 +8,8 @@
 3. ``.metadata`` 的 ``version.revision`` → Flutter 官方 releases manifest 的 hash 映射
    （注意：上游的 ``.metadata`` 可能滞后，实测 main 上的 revision 对应 3.38.5 而 CI pin 是 3.44.9，
    所以此路径只作为没有 CI pin 时的兜底）；
-4. ``--default``（默认 3.44.9），并标记 ``source=default`` 触发告警。
+4. ``--default``（默认 3.44.9）；加 ``--fail-on-default`` 时若走到这一步直接失败
+   （CI 里用它触发 Actions 失败通知，避免静默用旧版本构建）。
 
 默认不联网。加 ``--check-drift`` 才会拉取 releases manifest 并比较 CI pin 与
 ``.metadata`` revision 映射出的版本（仅用于人工排查，不建议放进日常构建）。
@@ -118,8 +119,9 @@ def detect(
     metadata_version = ""
     drift = "unknown"
 
-    # 只有「没有 CI pin」或「显式要求漂移检查」时才需要 releases manifest。
-    need_manifest = (pin is None) or check_drift
+    # 只有「没有 CI pin 但存在 .metadata revision」或「显式要求漂移检查」时才需要 manifest，
+    # 避免没有 .metadata 的仓库/测试也去联网。
+    need_manifest = (pin is None and revision is not None) or check_drift
     if need_manifest:
         manifest = manifest_fetcher()
         metadata_version = version_for_revision(manifest, revision) or ""
@@ -169,6 +171,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--default", default=DEFAULT_VERSION)
     parser.add_argument(
+        "--fail-on-default",
+        action="store_true",
+        help="检测不到上游 pin / .metadata 映射时直接失败（CI 用，触发失败通知）",
+    )
+    parser.add_argument(
         "--check-drift",
         action="store_true",
         help="拉取 Flutter releases manifest，比较 CI pin 与 .metadata revision 对应版本（默认关闭）",
@@ -179,6 +186,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::error::上游目录不存在：{args.upstream_dir}")
         return 1
 
+    override = args.override.strip()
+    if override and not re.fullmatch(r"\d+(\.\d+)+", override):
+        print(f"::error::FLUTTER_VERSION 覆盖值格式非法：{override!r}")
+        return 1
+
     result = detect(
         args.upstream_dir,
         override=args.override,
@@ -187,10 +199,15 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if result["source"] == "default":
-        print(
-            "::warning::未能从上游源码检测到 Flutter 版本，"
-            f"回退到默认 {result['version']}；请检查上游 .github 或 .metadata 结构。"
+        message = (
+            "未能从上游源码检测到 Flutter 版本（.github pin 与 .metadata 映射都不可用）；"
+            "请检查上游 .github/actions/setup/action.yml、.github/workflows/*.yml、.metadata 结构，"
+            "或设置仓库变量 FLUTTER_VERSION。"
         )
+        if args.fail_on_default:
+            print(f"::error::{message}")
+            return 1
+        print(f"::warning::{message} 回退到默认 {result['version']}。")
     if result["drift"] == "true":
         print(
             f"::warning::Flutter 版本可能漂移：CI pin={result['version']}，"

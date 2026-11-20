@@ -79,7 +79,8 @@ jobs:
         run: |
           python3 scripts/detect_flutter_version.py \
             --upstream-dir "$UPSTREAM_DIR" \
-            --override "${{ vars.FLUTTER_VERSION }}"
+            --override "${{ vars.FLUTTER_VERSION }}" \
+            --fail-on-default
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
