@@ -1,3 +1,6 @@
+> **已弃用（2026-11-21）**：仓库迁入 org 后，计划改由上游 release 流水线直接 `repository_dispatch`，
+> 不再使用 Cloudflare Worker 轮询。本文仅留作参考，不再维护。
+
 # 用 Cloudflare Worker 触发上游同步
 
 GitHub Actions 的 `schedule` 只是「尽力而为」，实测会从 30 分钟漂到几小时。这里用
@@ -16,7 +19,7 @@ Actions 里 `sync.yml` 已经加了 `on: repository_dispatch: types: [upstream-t
 ## 1. 创建 GitHub Token
 
 - GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token
-- Repository access：Only select repositories → `wjj-8283/Bugaoshan-sidestore`
+- Repository access：Only select repositories → `The-Brotherhood-of-SCU/Bugaoshan-sidestore`
 - Permissions → Repository permissions → **Contents: Read and write**
   （`repository_dispatch` 需要这个权限；不需要任何其他权限）
 - 记下 token（`github_pat_...`），只会显示一次
@@ -39,7 +42,7 @@ main = "src/index.js"
 compatibility_date = "2026-11-20"
 
 [vars]
-OUR_REPO = "wjj-8283/Bugaoshan-sidestore"
+OUR_REPO = "The-Brotherhood-of-SCU/Bugaoshan-sidestore"
 UPSTREAM_REPO = "The-Brotherhood-of-SCU/Bugaoshan"
 
 [[kv_namespaces]]

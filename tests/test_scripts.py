@@ -473,7 +473,7 @@ class MirrorTests(unittest.TestCase):
             self.assertTrue(url.startswith(prefix))
         for entry in app["versions"]:
             self.assertTrue(entry["downloadURL"].startswith(prefix))
-            self.assertNotIn("github.com/wjj-8283", entry["downloadURL"].replace(prefix, ""))
+            self.assertNotIn("github.com/The-Brotherhood-of-SCU", entry["downloadURL"].replace(prefix, ""))
 
         errors, warnings = validate_sources.validate_mirror_source(
             "preview", mirror, direct, CONFIG

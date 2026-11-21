@@ -1,14 +1,17 @@
 name: Sync upstream
 
-# 定时检查上游 Bugaoshan 的 tag：
+# 检查上游 Bugaoshan 的 tag：
 #   - preview 渠道：vX.Y.Z-preview / -preview.N / -rcN
 #   - stable  渠道：vX.Y.Z（正式 Release）
+# 触发方式：
+#   1. repository_dispatch（推荐）：上游 release 流水线发布后直接触发本仓库（同 org）；
+#   2. schedule：兜底，GitHub 的定时任务只是尽力而为，实测会漂到几小时一次；
+#   3. workflow_dispatch：手动。
 # 有新版本时先解析（ubuntu 上很便宜），只有需要构建时才占用 macOS runner。
 
 on:
   schedule:
-    # 兜底：GitHub 的 schedule 只是尽力而为，实测会漂到几小时一次。
-    # 主触发改为外部 Cloudflare Worker 调 repository_dispatch（见 docs/cloudflare-worker.md）。
+    # 仅兜底：GitHub 的定时任务不保证准点，实测会漂到几小时一次。
     - cron: "0,30 * * * *"
   repository_dispatch:
     types: [upstream-tag]

@@ -8,8 +8,8 @@
 
 | 渠道 | 直连源（GitHub） | 国内镜像源（gh-proxy 加速） |
 | --- | --- | --- |
-| 预览版 | `https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/preview.json` | `https://gh-proxy.com/https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/preview-mirror.json` |
-| 正式版 | `https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/stable.json` | `https://gh-proxy.com/https://raw.githubusercontent.com/wjj-8283/Bugaoshan-sidestore/main/stable-mirror.json` |
+| 预览版 | `https://raw.githubusercontent.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/main/preview.json` | `https://gh-proxy.com/https://raw.githubusercontent.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/main/preview-mirror.json` |
+| 正式版 | `https://raw.githubusercontent.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/main/stable.json` | `https://gh-proxy.com/https://raw.githubusercontent.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/main/stable-mirror.json` |
 
 | 渠道 | 跟随的上游 tag | 说明 |
 | --- | --- | --- |
@@ -21,14 +21,14 @@ GitHub 链接前拼接 `https://gh-proxy.com/`。镜像源里的 `sourceURL`、`
 `downloadURL` 全部走镜像前缀，所以中国大陆网络下也能加载图标、下载安装包。镜像 JSON 由 CI
 自动从直连源生成（`scripts/make_mirror.py`），版本、大小、SHA-256 与直连源完全一致。
 
-GitHub Pages 落地页（含一键添加按钮）：<https://wjj-8283.github.io/Bugaoshan-sidestore/>
+GitHub Pages 落地页（含一键添加按钮）：<https://scubro.dev/Bugaoshan-sidestore/>
 
 点一下就直接添加（iOS 上打开链接会唤起对应 App；AltStore 把 `sidestore://` 换成 `altstore://` 即可）：
 
-- 预览版（直连）：`sidestore://source?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fpreview.json`
-- 预览版（国内镜像）：`sidestore://source?url=https%3A%2F%2Fgh-proxy.com%2Fhttps%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fpreview-mirror.json`
-- 正式版（直连）：`sidestore://source?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fstable.json`
-- 正式版（国内镜像）：`sidestore://source?url=https%3A%2F%2Fgh-proxy.com%2Fhttps%3A%2F%2Fraw.githubusercontent.com%2Fwjj-8283%2FBugaoshan-sidestore%2Fmain%2Fstable-mirror.json`
+- 预览版（直连）：`sidestore://source?url=https%3A%2F%2Fraw.githubusercontent.com%2FThe-Brotherhood-of-SCU%2FBugaoshan-sidestore%2Fmain%2Fpreview.json`
+- 预览版（国内镜像）：`sidestore://source?url=https%3A%2F%2Fgh-proxy.com%2Fhttps%3A%2F%2Fraw.githubusercontent.com%2FThe-Brotherhood-of-SCU%2FBugaoshan-sidestore%2Fmain%2Fpreview-mirror.json`
+- 正式版（直连）：`sidestore://source?url=https%3A%2F%2Fraw.githubusercontent.com%2FThe-Brotherhood-of-SCU%2FBugaoshan-sidestore%2Fmain%2Fstable.json`
+- 正式版（国内镜像）：`sidestore://source?url=https%3A%2F%2Fgh-proxy.com%2Fhttps%3A%2F%2Fraw.githubusercontent.com%2FThe-Brotherhood-of-SCU%2FBugaoshan-sidestore%2Fmain%2Fstable-mirror.json`
 
 > 两个渠道共用同一个 Bundle ID（`io.github.thebrotherhoodofscu.bugaoshan.ios`），
 > 同一台设备同一时间只能安装其中一个渠道的版本；每个渠道的直连源与镜像源内容相同，加一个即可。
@@ -42,7 +42,7 @@ loopback-address:
 ## 工作原理
 
 ```
-schedule(每 30 分钟) / manual dispatch
+上游 repository_dispatch（推荐）/ schedule 兜底 / manual dispatch
         │
         ▼
    plan.py（ubuntu，约 20 秒）
@@ -55,7 +55,7 @@ schedule(每 30 分钟) / manual dispatch
    build-release.yml（macos-15，约 5–15 分钟；首次拉 Flutter SDK 会更久）
    ├─ 选择 Xcode 26.3（不存在则退回镜像里最新版）
    ├─ git clone --branch <tag> 上游源码
-   ├─ flutter 3.44.9 + pub get（沿用上游镜像/回退脚本）/ build_runner / gen-l10n
+   ├─ Flutter（从被构建 tag 的源码自动检测）+ pub get / build_runner / gen-l10n
    ├─ flutter build ios --release --no-codesign
    ├─ package_ipa.py 打包成 Payload/Runner.app → .ipa
    ├─ 发布 GitHub Release（tag 与上游同名）+ IPA 资产
@@ -64,6 +64,14 @@ schedule(每 30 分钟) / manual dispatch
    ├─ validate_sources.py 校验直连源 + 镜像源（含下载地址/大小/SHA-256）
    └─ 提交并推送 4 个 JSON（直连/镜像 × 预览/正式；rebase 重试）
 ```
+
+触发方式：
+
+- **推荐**：上游 release 流水线发布后直接 `repository_dispatch` 本仓库（两个仓库现在同属一个 org，
+  可用 org secret 或 GitHub App）；实时、无需轮询；
+- **兜底**：GitHub `schedule`（实测会漂到几小时一次，只保证最终会跑）；
+- **手动**：Actions → *Sync upstream* → Run workflow；
+- 早期用 Cloudflare Worker 每 5 分钟轮询，已弃用，仅留档：[docs/cloudflare-worker.md](docs/cloudflare-worker.md)。
 
 几个刻意与上游对齐的细节：
 
@@ -174,7 +182,7 @@ assets/                      # 图标与截图（来自上游）
 - **这是非官方分发**。上游同时在 App Store 分发正式版；侧载渠道仅作调试/尝鲜用途，
   请优先支持官方渠道。上游代码为 **AGPL-3.0**，本仓库的构建产物同样受该协议约束，
   源码请见上游仓库。
-- 预览版可能很"碎"：上游一天可能发好几个 preview tag，CI 每 30 分钟检查一次，
+- 预览版可能很"碎"：上游一天可能发好几个 preview tag，CI 由上游 dispatch 触发（schedule 仅兜底），
   只会构建"当前最新"的那个 tag；错过的中间版本不会再补（需要时用 `tag` 输入手动补）。
 - 免费 Apple ID 签名的 App 有效期 7 天，SideStore 会自动续签；这是 SideStore 的行为，与本仓库无关。
 - 小组件（CourseWidget 扩展）在侧载签名时可能被 SideStore 移除，App 本体不受影响。
