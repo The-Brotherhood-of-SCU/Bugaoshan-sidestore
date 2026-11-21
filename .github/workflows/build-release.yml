@@ -264,6 +264,13 @@ jobs:
             SHA256="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$IPA_DIR/metadata.json")"
           fi
           if [ -z "$DATE" ]; then DATE="$(date -u +%F)"; fi
+          # 保存下来：提交步骤遇到冲突时，会基于最新 main 重新生成 JSON。
+          {
+            echo "SOURCE_SIZE=$SIZE"
+            echo "SOURCE_URL=$URL"
+            echo "SOURCE_DATE=$DATE"
+            echo "SOURCE_SHA256=${SHA256:-}"
+          } >> "$GITHUB_ENV"
           # SideStore 默认会校验 IPA 的 SHA-256；构建模式下由 package_ipa.py 计算，
           # reuse 模式用 GitHub Release 资产的 digest。
           python3 scripts/update_source.py \
@@ -288,21 +295,51 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git add preview.json stable.json preview-mirror.json stable-mirror.json
-          if git diff --cached --quiet; then
-            echo "源 JSON 没有变化，跳过提交"
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(source): 同步 $SRC_CHANNEL $SRC_VERSION"
-          for attempt in 1 2 3 4 5; do
+
+          commit_json() {
+            git add preview.json stable.json preview-mirror.json stable-mirror.json
+            if git diff --cached --quiet; then
+              echo "源 JSON 没有变化，跳过提交"
+              return 1
+            fi
+            git commit -m "chore(source): 同步 $SRC_CHANNEL $SRC_VERSION"
+          }
+
+          # 构建期间 main 可能被人推了新提交（例如源 JSON 迁移/手工改动），
+          # 直接 rebase 会在 JSON 上冲突。这里以最新 main 为基线重新生成 JSON。
+          regenerate_on_latest_main() {
+            git fetch -q origin main
+            git reset --hard origin/main
+            python3 scripts/update_source.py \
+              --channel "$SRC_CHANNEL" \
+              --tag "$SRC_TAG" \
+              --size "$SOURCE_SIZE" \
+              --download-url "$SOURCE_URL" \
+              --date "$SOURCE_DATE" \
+              --sha256 "${SOURCE_SHA256:-}" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+            python3 scripts/make_mirror.py --channel "$SRC_CHANNEL"
+            python3 scripts/validate_sources.py --channel "$SRC_CHANNEL"
+          }
+
+          if ! commit_json; then
+            exit 0
+          fi
+
+          for attempt in 1 2 3; do
             if git pull --rebase --autostash origin main && git push origin HEAD:main; then
               echo "已推送源 JSON"
               exit 0
             fi
             git rebase --abort 2>/dev/null || true
-            sleep $((attempt * 5))
+            echo "推送/变基冲突，改为基于 origin/main 重新生成 JSON（第 $attempt 次）"
+            regenerate_on_latest_main
+            if ! commit_json; then
+              exit 0
+            fi
+            sleep 3
           done
           echo "::error::推送源 JSON 失败"
           exit 1
