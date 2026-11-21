@@ -80,6 +80,26 @@ def plan_channel(
     }
 
 
+def resolve_channel(channel: str, target_tag: str | None) -> str:
+    """把 ``--channel all`` + ``--tag`` 归一成具体渠道（tag 自动推断）。
+
+    ``repository_dispatch`` 只会传 tag，不传渠道；这里根据 tag 后缀判断
+    preview / stable，非法 tag 或渠道冲突时抛 ``ValueError``。
+    """
+    if not target_tag:
+        return channel
+    parsed = common.parse_tag(target_tag)
+    if parsed is None:
+        raise ValueError(f"无法识别的 tag：{target_tag}")
+    if channel == "all":
+        return parsed.channel
+    if channel != parsed.channel:
+        raise ValueError(
+            f"tag {target_tag} 属于 {parsed.channel} 渠道，不能用于 {channel} 渠道"
+        )
+    return channel
+
+
 def _channel_list(channel: str) -> list[str]:
     if channel == "all":
         return ["preview", "stable"]
@@ -99,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--tag",
         default=common.env("TARGET_TAG"),
-        help="强制构建指定上游 tag（仅单渠道时可用）",
+        help="强制构建指定上游 tag；渠道会从 tag 自动推断，与 --channel 冲突时报错",
     )
     parser.add_argument(
         "--force",
@@ -110,12 +130,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", default=common.env("GITHUB_REPOSITORY"), help="本仓库 owner/name")
     args = parser.parse_args(argv)
 
-    if args.tag and args.channel == "all":
-        parser.error("--tag 必须与 --channel preview 或 --channel stable 一起使用")
+    try:
+        args.channel = resolve_channel(args.channel, args.tag or None)
+    except ValueError as error:
+        parser.error(str(error))
 
     config = common.load_config()
     token = common.env("GH_TOKEN") or common.env("GITHUB_TOKEN")
     tags = common.fetch_upstream_tags(config["upstreamRepo"])
+
+    # payload 里的 tag 可能还没同步到上游（极少见）；找不到就回退为「各渠道最新」。
+    if args.tag and args.tag not in {tag.name for tag in tags}:
+        print(f"::warning::上游没有 tag {args.tag}，回退为各渠道最新 tag")
+        args.tag = ""
 
     outputs: dict[str, str] = {}
     report: dict[str, Any] = {}

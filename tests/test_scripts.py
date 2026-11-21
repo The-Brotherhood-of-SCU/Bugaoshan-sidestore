@@ -147,6 +147,16 @@ class PlanTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self._plan("preview", None, None, target_tag="v2.6.0")
 
+    def test_resolve_channel_from_tag(self) -> None:
+        self.assertEqual(plan_module.resolve_channel("all", "v2.6.0-rc3"), "preview")
+        self.assertEqual(plan_module.resolve_channel("all", "v2.6.0"), "stable")
+        self.assertEqual(plan_module.resolve_channel("preview", "v2.6.0-rc3"), "preview")
+        self.assertEqual(plan_module.resolve_channel("all", None), "all")
+        with self.assertRaises(ValueError):
+            plan_module.resolve_channel("stable", "v2.6.0-rc3")
+        with self.assertRaises(ValueError):
+            plan_module.resolve_channel("all", "not-a-tag")
+
     def test_no_tags(self) -> None:
         self.assertIsNone(
             plan_module.plan_channel(

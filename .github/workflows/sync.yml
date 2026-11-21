@@ -59,7 +59,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CHANNEL: ${{ inputs.channel || 'all' }}
-          TARGET_TAG: ${{ inputs.tag }}
+          # repository_dispatch 时使用上游传来的 client_payload.tag；手动 dispatch 用 inputs.tag
+          TARGET_TAG: ${{ github.event.client_payload.tag || inputs.tag }}
           FORCE: ${{ inputs.force && '1' || '0' }}
         run: python3 scripts/plan.py
 

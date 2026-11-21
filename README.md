@@ -68,7 +68,8 @@ loopback-address:
 触发方式：
 
 - **推荐**：上游 release 流水线发布后直接 `repository_dispatch` 本仓库（两个仓库现在同属一个 org，
-  可用 org secret 或 GitHub App）；实时、无需轮询；
+  可用 org secret 或 GitHub App）；实时、无需轮询。dispatch 的 `client_payload.tag` 会被当作
+  `TARGET_TAG`，渠道从 tag 自动推断，因此只会构建这一个 tag；没有 payload 时按各渠道最新处理；
 - **兜底**：GitHub `schedule`（实测会漂到几小时一次，只保证最终会跑）；
 - **手动**：Actions → *Sync upstream* → Run workflow；
 - 早期用 Cloudflare Worker 每 5 分钟轮询，已弃用，仅留档：[docs/cloudflare-worker.md](docs/cloudflare-worker.md)。
