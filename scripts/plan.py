@@ -140,10 +140,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", default=common.env("GITHUB_REPOSITORY"), help="本仓库 owner/name")
     args = parser.parse_args(argv)
 
+    # repository_dispatch 是上游自动通知，tag 命名漂移时允许多告警 + 回退，避免静默停更；
+    # workflow_dispatch 是人工输入，填错直接失败，避免「以为构建 A、实际构建 B」。
+    event_name = common.env("GITHUB_EVENT_NAME") or "workflow_dispatch"
+    automated = event_name == "repository_dispatch"
+
     try:
         args.channel = resolve_channel(args.channel, args.tag or None)
     except ValueError as error:
-        # 上游 tag 命名变化时不要让整个 job 直接失败，否则会静默停止更新。
+        if not automated:
+            parser.error(str(error))
         print(f"::warning::{error}；忽略该 tag，按各渠道最新处理")
         args.tag = ""
 
@@ -151,9 +157,12 @@ def main(argv: list[str] | None = None) -> int:
     token = common.env("GH_TOKEN") or common.env("GITHUB_TOKEN")
     tags = common.fetch_upstream_tags(config["upstreamRepo"])
 
-    # payload 里的 tag 可能还没同步到上游（极少见）；找不到就回退为「各渠道最新」。
+    # payload 里的 tag 可能还没同步到上游（极少见）。
     if args.tag and args.tag not in {tag.name for tag in tags}:
-        print(f"::warning::上游没有 tag {args.tag}，回退为各渠道最新 tag")
+        message = f"上游没有 tag {args.tag}"
+        if not automated:
+            parser.error(message)
+        print(f"::warning::{message}，回退为各渠道最新 tag")
         args.tag = ""
 
     outputs: dict[str, str] = {}

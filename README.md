@@ -71,7 +71,8 @@ loopback-address:
   可用 org secret 或 GitHub App）；实时、无需轮询。dispatch 的 `client_payload.tag` 会被当作
   `TARGET_TAG`，渠道从 tag 自动推断，因此只会构建这一个 tag；如果这个 tag 不新于源当前版本
   （例如队列里排队的旧 preview），会直接 skip，不会重复构建，只有 `force` 才会回头构建旧版本；
-  没有 payload 时按各渠道最新处理；
+  没有 payload 时按各渠道最新处理。容错策略按事件区分：`repository_dispatch` 遇到无法识别/不存在的
+  tag 只告警并回退最新；`workflow_dispatch` 人工填错则直接报错，不会悄悄换成别的版本；
 - **兜底**：GitHub `schedule`（实测会漂到几小时一次，只保证最终会跑）；
 - **手动**：Actions → *Sync upstream* → Run workflow；
 - 早期用 Cloudflare Worker 每 5 分钟轮询，已弃用，仅留档：[docs/cloudflare-worker.md](docs/cloudflare-worker.md)。

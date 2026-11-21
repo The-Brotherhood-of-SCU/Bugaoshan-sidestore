@@ -3,13 +3,17 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import os
 import plistlib
 import stat
 import sys
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -166,6 +170,42 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(plan["tag"], "v2.5.4-preview.48")
         with self.assertRaises(ValueError):
             self._plan("preview", None, None, target_tag="v2.6.0")
+
+    def _run_plan_main(self, argv: list[str], event: str, temp: str) -> int:
+        env = {
+            "GITHUB_EVENT_NAME": event,
+            "GITHUB_OUTPUT": str(Path(temp) / "out"),
+            "GITHUB_STEP_SUMMARY": "",
+            "GITHUB_REPOSITORY": "",
+        }
+        with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(
+            common, "fetch_upstream_tags", return_value=parsed(TAGS)
+        ), contextlib.redirect_stdout(io.StringIO()):
+            return plan_module.main(argv)
+
+    def test_manual_tag_channel_conflict_is_fatal(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaises(SystemExit):
+                self._run_plan_main(
+                    ["--channel", "stable", "--tag", "v2.6.0-rc3"], "workflow_dispatch", temp
+                )
+
+    def test_manual_missing_tag_is_fatal(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaises(SystemExit):
+                self._run_plan_main(
+                    ["--channel", "stable", "--tag", "v9.9.9"], "workflow_dispatch", temp
+                )
+
+    def test_dispatch_tag_channel_conflict_falls_back(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            code = self._run_plan_main(
+                ["--channel", "stable", "--tag", "v2.6.0-rc3"], "repository_dispatch", temp
+            )
+            self.assertEqual(code, 0)
+            output = (Path(temp) / "out").read_text()
+            self.assertIn("stable_needed=true", output)
+            self.assertIn('"tag": "v2.6.0"', output)
 
     def test_resolve_channel_from_tag(self) -> None:
         self.assertEqual(plan_module.resolve_channel("all", "v2.6.0-rc3"), "preview")
