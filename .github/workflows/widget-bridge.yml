@@ -155,11 +155,10 @@ jobs:
           TAG="widgetbridge-${VERSION}"
           IPA="$IPA_DIR/Bugaoshan-$VERSION-widgetbridge.ipa"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$IPA" --clobber
-            gh release edit "$TAG" --title "Widget bridge ${VERSION} 实验版" --notes-file "$NOTES" --prerelease
-          else
-            gh release create "$TAG" "$IPA" --title "Widget bridge ${VERSION} 实验版" --notes-file "$NOTES" --prerelease
+            # immutable release：不能覆盖旧资产，换一个带 run id 的 tag
+            TAG="${TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           fi
+          gh release create "$TAG" "$IPA" --title "Widget bridge ${VERSION} 实验版" --notes-file "$NOTES" --prerelease
 
       - name: Job summary
         if: always()

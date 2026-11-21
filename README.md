@@ -58,7 +58,7 @@ loopback-address:
    ├─ Flutter（从被构建 tag 的源码自动检测）+ pub get / build_runner / gen-l10n
    ├─ flutter build ios --release --no-codesign
    ├─ package_ipa.py 打包成 Payload/Runner.app → .ipa
-   ├─ 发布 GitHub Release（tag 与上游同名）+ IPA 资产
+   ├─ 发布 GitHub Release（tag 与上游同名；重建时另开 rebuild-* tag）+ IPA 资产
    ├─ update_source.py 写回直连源 JSON（保留最近 N 个历史版本）
    ├─ make_mirror.py 生成国内镜像源 JSON（所有 GitHub 链接套 gh-proxy 前缀）
    ├─ validate_sources.py 校验直连源 + 镜像源（含下载地址/大小/SHA-256）
@@ -96,6 +96,10 @@ loopback-address:
   证书能力处理（可能提示移除扩展）。
 - **Release tag 与上游同名**：本仓库的 `v2.6.0-rc3` 与上游 `v2.6.0-rc3` 一一对应，
   便于追溯；资产名固定为 `Bugaoshan-<version>.ipa`。
+- **immutable releases**：org 已开启「不可变 Release」，已发布 release 的资产不能覆盖/删除。
+  因此对同一 tag 重建（`force` 或资产缺失）时，产物会发布到
+  `rebuild-<上游tag>-<run_id>-<attempt>` 的独立 Release；源 JSON 的 `version` 保持不变，
+  `downloadURL` 指向重建后的资产。
 
 ## 手动操作
 
@@ -111,7 +115,8 @@ GitHub Actions → **Sync upstream** → *Run workflow*：
 
 - 某次构建失败、上游已经又发了新版本：直接 `channel=preview` + `force=false` 就会构建最新；
 - 想补一个旧版本：`channel=preview` + `tag=v2.5.4-preview.48`；
-- 想重打同一个 tag：加 `force=true`（会覆盖 Release 资产并重写 JSON 条目）。
+- 想重打同一个 tag：加 `force=true`（会发布到 `rebuild-*` 独立 Release，并把 JSON 的 `downloadURL` 指过去；
+  因为 `version` 不变，SideStore 不会提示更新，需要手动重装一次）。
 
 ### 本地跑脚本
 
@@ -188,6 +193,8 @@ assets/                      # 图标与截图（来自上游）
 - 小组件（CourseWidget 扩展）在侧载签名时可能被 SideStore 移除，App 本体不受影响。
 - IPA 未签名、未公证；下载后如校验失败，可在 Release 页面核对文件大小并重新下载。
 - 本仓库只发布 iOS IPA，不镜像 Android APK / Windows / Linux 产物。
+- org 开启了 immutable releases，已发布 Release 无法修改；需要重建时请用 `force`，CI 会自动发到
+  `rebuild-*` tag，而不是报错退出。
 - 国内镜像依赖第三方服务 [gh-proxy.com](https://gh-proxy.com/docs/github-accelerator)，它只做转发、
   不托管文件；若该服务临时故障，源会暂时加载失败，可换回直连地址或稍后重试。镜像可用性只做告警，
   不会阻断 CI 发布。

@@ -227,21 +227,25 @@ jobs:
           IPA="$IPA_DIR/Bugaoshan-$SRC_VERSION.ipa"
           TITLE="不高山上 $SRC_VERSION"
           NOTES="$RUNNER_TEMP/release-notes.md"
-          exists=0
-          if gh release view "$SRC_TAG" >/dev/null 2>&1; then exists=1; fi
-          if [ "$exists" = "1" ]; then
-            gh release upload "$SRC_TAG" "$IPA" --clobber
-            if [ "$SRC_CHANNEL" = "preview" ]; then
-              gh release edit "$SRC_TAG" --title "$TITLE" --notes-file "$NOTES" --prerelease
-            else
-              gh release edit "$SRC_TAG" --title "$TITLE" --notes-file "$NOTES"
-            fi
+          RELEASE_TAG="$SRC_TAG"
+
+          # 组织已开启 immutable releases：已发布 release 的资产不能覆盖/删除。
+          # 需要重建时（force 或资产缺失）另开一个 rebuild tag，源 JSON 的 version 不变。
+          if gh release view "$SRC_TAG" >/dev/null 2>&1; then
+            RELEASE_TAG="rebuild-${SRC_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            TITLE="$TITLE（重建）"
+            echo "::notice::release $SRC_TAG 已存在且不可修改，本次产物发布到 $RELEASE_TAG"
+            {
+              echo
+              echo "> 本次为**重建**：org 已开启 immutable releases，原始 \`$SRC_TAG\` 的 Release 不可修改，产物发布在 \`$RELEASE_TAG\`。"
+            } >> "$NOTES"
+          fi
+          echo "SOURCE_RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+          if [ "$SRC_CHANNEL" = "preview" ]; then
+            gh release create "$RELEASE_TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES" --prerelease
           else
-            if [ "$SRC_CHANNEL" = "preview" ]; then
-              gh release create "$SRC_TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES" --prerelease
-            else
-              gh release create "$SRC_TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES"
-            fi
+            gh release create "$RELEASE_TAG" "$IPA" --title "$TITLE" --notes-file "$NOTES"
           fi
 
       - name: Update source JSON
@@ -259,7 +263,7 @@ jobs:
             fi
           else
             SIZE="$(stat -f%z "$IPA_DIR/Bugaoshan-$SRC_VERSION.ipa")"
-            URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$SRC_TAG/Bugaoshan-$SRC_VERSION.ipa"
+            URL="https://github.com/$GITHUB_REPOSITORY/releases/download/${SOURCE_RELEASE_TAG:-$SRC_TAG}/Bugaoshan-$SRC_VERSION.ipa"
             DATE="$(date -u +%F)"
             SHA256="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sha256"])' "$IPA_DIR/metadata.json")"
           fi
@@ -358,7 +362,7 @@ jobs:
             echo "| 版本注入 | \`$SRC_BUILD_NAME ($SRC_BUILD_NUMBER)\` |"
             echo "| 小组件桥接 | \`${WIDGET_BRIDGE:-unknown}\` |"
             echo "| Flutter | \`${FLUTTER_VERSION:-unknown}\`（${FLUTTER_SOURCE:-unknown}） |"
-            echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/$SRC_TAG |"
+            echo "| Release | https://github.com/$GITHUB_REPOSITORY/releases/tag/${SOURCE_RELEASE_TAG:-$SRC_TAG} |"
             if [ -f "$IPA_DIR/metadata.json" ]; then
               echo "| IPA 大小 | $(cat "$IPA_DIR/metadata.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["size"])') 字节 |"
             fi
