@@ -141,6 +141,26 @@ class PlanTests(unittest.TestCase):
         plan = self._plan("stable", "2.6.0", self._release("2.6.0"), force=True)
         self.assertEqual(plan["mode"], "build")
 
+    def test_skip_older_target_without_force(self) -> None:
+        # 队列里的旧 dispatch（current=rc3, target=rc2）不应重复构建
+        plan = self._plan(
+            "preview",
+            "2.6.0-rc3",
+            self._release("2.6.0-rc3"),
+            target_tag="v2.6.0-rc2",
+        )
+        self.assertEqual(plan["mode"], "skip")
+        self.assertIn("旧于", plan["skip_reason"])
+
+        forced = self._plan(
+            "preview",
+            "2.6.0-rc3",
+            self._release("2.6.0-rc3"),
+            target_tag="v2.6.0-rc2",
+            force=True,
+        )
+        self.assertEqual(forced["mode"], "build")
+
     def test_target_tag(self) -> None:
         plan = self._plan("preview", None, None, target_tag="v2.5.4-preview.48")
         self.assertEqual(plan["tag"], "v2.5.4-preview.48")

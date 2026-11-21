@@ -56,7 +56,16 @@ def plan_channel(
         return None
 
     asset = common.find_ipa_asset(release, tag.version)
-    if current_version == tag.version and not force:
+    current_tag = common.parse_tag(f"v{current_version}") if current_version else None
+    # repository_dispatch 可能排队执行：轮到旧 tag 时源 JSON 已经更新到更新版本，
+    # 此时不要回头构建旧版本（除非显式 force），避免浪费一次 macOS runner。
+    stale_target = bool(
+        current_tag and not force and tag.sort_key < current_tag.sort_key
+    )
+
+    if stale_target:
+        mode = "skip"
+    elif current_version == tag.version and not force:
         mode = "skip" if asset else "build"
     elif asset and not force:
         mode = "reuse"
@@ -77,6 +86,7 @@ def plan_channel(
         "asset_size": int((asset or {}).get("size") or 0),
         "asset_date": str((asset or {}).get("created_at") or "")[:10],
         "asset_sha256": common.asset_sha256(asset),
+        "skip_reason": "target_tag 旧于源当前版本" if stale_target else "",
     }
 
 
@@ -133,7 +143,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args.channel = resolve_channel(args.channel, args.tag or None)
     except ValueError as error:
-        parser.error(str(error))
+        # 上游 tag 命名变化时不要让整个 job 直接失败，否则会静默停止更新。
+        print(f"::warning::{error}；忽略该 tag，按各渠道最新处理")
+        args.tag = ""
 
     config = common.load_config()
     token = common.env("GH_TOKEN") or common.env("GITHUB_TOKEN")
