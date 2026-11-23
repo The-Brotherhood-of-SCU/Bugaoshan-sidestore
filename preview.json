@@ -6,6 +6,15 @@
     {
       "versions": [
         {
+          "version": "2.6.1-preview.9",
+          "date": "2026-11-23",
+          "localizedDescription": "由 GitHub Actions 从上游 [`The-Brotherhood-of-SCU/Bugaoshan`](https://github.com/The-Brotherhood-of-SCU/Bugaoshan) 的 tag `v2.6.1-preview.9` 源码构建的**未签名 IPA**，安装时由 SideStore / AltStore 使用你自己的证书重新签名。\n\n- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。\n- 版本注入：`CFBundleShortVersionString=2.6.1-preview.9`、`CFBundleVersion=20601`（与上游 CI 的版本注入规则一致）。\n- 构建工具链：Flutter `3.44.9`（来源 `.github/actions/setup/action.yml`）。\n- 小组件：已内置 Keychain 桥接补丁。安装时请选 **Keep App Extensions (Use Main Profile)**，装完先打开一次 App 让快照写入，再添加小组件。",
+          "downloadURL": "https://github.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/releases/download/v2.6.1-preview.9/Bugaoshan-2.6.1-preview.9.ipa",
+          "size": 14827520,
+          "minOSVersion": "15.0",
+          "sha256": "756e527021be5fcdac3789088dd1183f2cb51447dd9c2c6092be3b68f546b510"
+        },
+        {
           "version": "2.6.1-preview.8",
           "date": "2026-11-23",
           "localizedDescription": "由 GitHub Actions 从上游 [`The-Brotherhood-of-SCU/Bugaoshan`](https://github.com/The-Brotherhood-of-SCU/Bugaoshan) 的 tag `v2.6.1-preview.8` 源码构建的**未签名 IPA**，安装时由 SideStore / AltStore 使用你自己的证书重新签名。\n\n- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。\n- 版本注入：`CFBundleShortVersionString=2.6.1-preview.8`、`CFBundleVersion=20601`（与上游 CI 的版本注入规则一致）。\n- 构建工具链：Flutter `3.44.9`（来源 `.github/actions/setup/action.yml`）。\n- 小组件：已内置 Keychain 桥接补丁。安装时请选 **Keep App Extensions (Use Main Profile)**，装完先打开一次 App 让快照写入，再添加小组件。",
@@ -63,11 +72,11 @@
         "https://raw.githubusercontent.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/main/assets/screenshots/course.jpg",
         "https://raw.githubusercontent.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/main/assets/screenshots/widget.jpg"
       ],
-      "version": "2.6.1-preview.8",
+      "version": "2.6.1-preview.9",
       "versionDate": "2026-11-23",
-      "versionDescription": "由 GitHub Actions 从上游 [`The-Brotherhood-of-SCU/Bugaoshan`](https://github.com/The-Brotherhood-of-SCU/Bugaoshan) 的 tag `v2.6.1-preview.8` 源码构建的**未签名 IPA**，安装时由 SideStore / AltStore 使用你自己的证书重新签名。\n\n- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。\n- 版本注入：`CFBundleShortVersionString=2.6.1-preview.8`、`CFBundleVersion=20601`（与上游 CI 的版本注入规则一致）。\n- 构建工具链：Flutter `3.44.9`（来源 `.github/actions/setup/action.yml`）。\n- 小组件：已内置 Keychain 桥接补丁。安装时请选 **Keep App Extensions (Use Main Profile)**，装完先打开一次 App 让快照写入，再添加小组件。",
-      "downloadURL": "https://github.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/releases/download/v2.6.1-preview.8/Bugaoshan-2.6.1-preview.8.ipa",
-      "size": 14822376
+      "versionDescription": "由 GitHub Actions 从上游 [`The-Brotherhood-of-SCU/Bugaoshan`](https://github.com/The-Brotherhood-of-SCU/Bugaoshan) 的 tag `v2.6.1-preview.9` 源码构建的**未签名 IPA**，安装时由 SideStore / AltStore 使用你自己的证书重新签名。\n\n- 安装：把本仓库的源添加到 SideStore / AltStore，或下载下面的 IPA 用你自己的证书重签名。\n- 版本注入：`CFBundleShortVersionString=2.6.1-preview.9`、`CFBundleVersion=20601`（与上游 CI 的版本注入规则一致）。\n- 构建工具链：Flutter `3.44.9`（来源 `.github/actions/setup/action.yml`）。\n- 小组件：已内置 Keychain 桥接补丁。安装时请选 **Keep App Extensions (Use Main Profile)**，装完先打开一次 App 让快照写入，再添加小组件。",
+      "downloadURL": "https://github.com/The-Brotherhood-of-SCU/Bugaoshan-sidestore/releases/download/v2.6.1-preview.9/Bugaoshan-2.6.1-preview.9.ipa",
+      "size": 14827520
     }
   ]
 }
