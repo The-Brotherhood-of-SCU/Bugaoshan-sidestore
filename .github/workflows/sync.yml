@@ -91,9 +91,12 @@ jobs:
       contents: read
       pages: write
       id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -114,4 +117,15 @@ jobs:
           path: _site
 
       - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: Wait before Pages retry
+        if: steps.deployment.outcome == 'failure'
+        run: |
+          echo "首次 Pages 部署失败（常见于 artifact/Pages API 瞬时故障），15 秒后重试"
+          sleep 15
+
+      - id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4

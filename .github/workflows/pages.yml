@@ -12,6 +12,10 @@ on:
       - "assets/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
+  schedule:
+    # 兜底：机器人用 GITHUB_TOKEN 提交的 JSON 不会触发 push 事件，
+    # sync 里的 Pages 部署若失败，靠这条每日任务收敛。
+    - cron: "23 4 * * *"
 
 permissions:
   contents: read
@@ -29,7 +33,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,4 +52,15 @@ jobs:
           path: _site
 
       - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: Wait before Pages retry
+        if: steps.deployment.outcome == 'failure'
+        run: |
+          echo "首次 Pages 部署失败（常见于 artifact/Pages API 瞬时故障），15 秒后重试"
+          sleep 15
+
+      - id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
